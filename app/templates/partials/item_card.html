@@ -1,0 +1,49 @@
+{% set tracked = i.necessity and i.low_stock_threshold %}
+{% set fill = [[((i.quantity / i.low_stock_threshold * 100) if i.low_stock_threshold else 100), 100]|min, 8]|max %}
+<article id="item-{{ i.id }}"
+         class="fade-in relative overflow-hidden rounded-2xl border border-line bg-surface py-3.5 pl-5 pr-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+  <!-- stock gauge: fills with quantity relative to the reorder threshold -->
+  <span class="absolute inset-y-2.5 left-2 flex w-1.5 flex-col justify-end rounded-full bg-line" aria-hidden="true">
+    <span class="w-full rounded-full {{ 'bg-amber' if i.is_low else ('bg-basil' if tracked else 'bg-line') }}"
+          style="height: {{ fill }}%"></span>
+  </span>
+
+  <div class="flex items-start justify-between gap-2">
+    <div class="min-w-0">
+      <h3 class="truncate text-[17px] font-semibold leading-tight">{{ i.item }}</h3>
+      <p class="mt-0.5 truncate text-sm text-muted">
+        {% if tracked %}reorder at {{ i.low_stock_threshold|num }} {{ i.unit }} · {% endif %}{{ i.category }}
+      </p>
+    </div>
+    <div class="flex shrink-0 flex-col items-end gap-1">
+      {% if i.is_low %}<span class="rounded bg-amber-tint px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber">Low</span>{% endif %}
+      {% if i.on_the_way %}<span class="rounded bg-denim-tint px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-denim">On the way</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="mt-2 flex items-center justify-between">
+    <button hx-post="/items/{{ i.id }}/dec" hx-target="#item-{{ i.id }}" hx-swap="outerHTML" aria-label="Remove one"
+            class="grid h-12 w-12 place-items-center rounded-full border border-line bg-surface text-2xl leading-none text-ink transition active:scale-90 active:bg-line">&minus;</button>
+
+    <div class="text-center">
+      <div class="font-display text-[2rem] font-bold leading-none tabular-nums">{{ i.quantity|num }}</div>
+      <div class="mt-1 text-xs font-medium uppercase tracking-wide text-muted">{{ i.unit }}</div>
+    </div>
+
+    <button hx-post="/items/{{ i.id }}/inc" hx-target="#item-{{ i.id }}" hx-swap="outerHTML" aria-label="Add one"
+            class="grid h-12 w-12 place-items-center rounded-full border border-line bg-surface text-2xl leading-none text-ink transition active:scale-90 active:bg-line">+</button>
+  </div>
+
+  <div class="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3">
+    <form hx-post="/items/{{ i.id }}/quantity" hx-target="#item-{{ i.id }}" hx-swap="outerHTML" class="flex items-center gap-1.5">
+      <input type="number" step="any" min="0" name="quantity" value="{{ i.quantity|num }}" aria-label="Set quantity"
+             class="w-16 rounded-lg border border-line bg-paper px-2 py-2 text-center text-sm focus:border-basil focus:outline-none">
+      <button class="rounded-lg bg-basil-tint px-3 py-2 text-sm font-semibold text-basil">Set</button>
+    </form>
+    <button hx-post="/items/{{ i.id }}/on-the-way" hx-vals='{"value": "{{ 0 if i.on_the_way else 1 }}"}'
+            hx-target="#item-{{ i.id }}" hx-swap="outerHTML"
+            class="rounded-full border px-3 py-1.5 text-sm font-medium transition-colors {{ 'border-denim bg-denim text-white' if i.on_the_way else 'border-line text-muted' }}">
+      {{ '✓ On the way' if i.on_the_way else 'On the way' }}
+    </button>
+  </div>
+</article>

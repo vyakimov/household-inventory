@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Manage{% endblock %}
+{% block content %}
+<header class="mb-4">
+  <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Household</p>
+  <h1 class="font-display text-3xl font-bold tracking-tight">Manage items</h1>
+</header>
+
+<form hx-post="/items" hx-target="#admin-tbody" hx-swap="afterbegin"
+      hx-on::after-request="this.reset()"
+      class="mb-5 grid grid-cols-2 gap-2 rounded-2xl border border-line bg-surface p-3">
+  <input name="item" placeholder="New item name" required
+         class="col-span-2 rounded-lg border border-line bg-paper px-3 py-2 focus:border-basil focus:outline-none">
+  <select name="category" class="rounded-lg border border-line bg-paper px-2 py-2 focus:border-basil focus:outline-none">
+    {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+  </select>
+  <select name="unit" class="rounded-lg border border-line bg-paper px-2 py-2 focus:border-basil focus:outline-none">
+    {% for u in units %}<option value="{{ u }}" {{ 'selected' if u == 'units' }}>{{ u }}</option>{% endfor %}
+  </select>
+  <input name="quantity" type="number" step="any" min="0" value="0" placeholder="qty"
+         class="rounded-lg border border-line bg-paper px-3 py-2 focus:border-basil focus:outline-none">
+  <input name="low_stock_threshold" type="number" step="any" min="0" value="0" placeholder="reorder at"
+         class="rounded-lg border border-line bg-paper px-3 py-2 focus:border-basil focus:outline-none">
+  <label class="col-span-2 flex items-center gap-2 text-sm text-muted">
+    <input type="checkbox" name="necessity" value="1" class="accent-basil"> Necessity
+  </label>
+  <button class="col-span-2 rounded-xl bg-basil py-2.5 font-semibold text-white">Add item</button>
+</form>
+
+<div class="overflow-x-auto rounded-2xl border border-line bg-surface">
+  <table class="w-full text-sm">
+    <thead class="border-b border-line text-left text-[11px] uppercase tracking-wide text-muted">
+      <tr>
+        <th class="p-2.5">Item</th><th class="p-2.5">Category</th><th class="p-2.5">Qty</th>
+        <th class="p-2.5">Unit</th><th class="p-2.5">Reorder</th><th class="p-2.5">Nec</th><th class="p-2.5"></th>
+      </tr>
+    </thead>
+    <tbody id="admin-tbody" class="divide-y divide-line">
+      {% for i in items %}{% include "partials/admin_row.html" %}{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

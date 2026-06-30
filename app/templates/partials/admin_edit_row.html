@@ -1,0 +1,32 @@
+<tr id="admin-{{ i.id }}">
+  <td colspan="7" class="bg-paper p-3">
+    <form hx-post="/items/{{ i.id }}/edit" hx-target="#admin-{{ i.id }}" hx-swap="outerHTML"
+          class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {% set field = "mt-0.5 w-full rounded-lg border border-line bg-surface px-2 py-1.5 focus:border-basil focus:outline-none" %}
+      <label class="text-xs text-muted">Item<input name="item" value="{{ i.item }}" required class="{{ field }}"></label>
+      <label class="text-xs text-muted">Aliases<input name="aliases" value="{{ i.aliases }}" class="{{ field }}"></label>
+      <label class="text-xs text-muted">Category
+        <select name="category" class="{{ field }}">
+          {% for c in categories %}<option value="{{ c }}" {{ 'selected' if c == i.category }}>{{ c }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="text-xs text-muted">Unit
+        <select name="unit" class="{{ field }}">
+          {% for u in units %}<option value="{{ u }}" {{ 'selected' if u == i.unit }}>{{ u }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="text-xs text-muted">Quantity<input name="quantity" type="number" step="any" min="0" value="{{ i.quantity|num }}" class="{{ field }}"></label>
+      <label class="text-xs text-muted">Reorder at<input name="low_stock_threshold" type="number" step="any" min="0" value="{{ i.low_stock_threshold|num }}" class="{{ field }}"></label>
+      <label class="text-xs text-muted">Step<input name="step" type="number" step="any" min="0" value="{{ i.step|num }}" class="{{ field }}"></label>
+      <label class="text-xs text-muted">Shopping name<input name="shopping_item_name" value="{{ i.shopping_item_name }}" class="{{ field }}"></label>
+      <label class="col-span-2 flex items-center gap-2 text-sm text-muted sm:col-span-4">
+        <input type="checkbox" name="necessity" value="1" {{ 'checked' if i.necessity }} class="accent-basil"> Necessity
+      </label>
+      <div class="col-span-2 flex gap-2 sm:col-span-4">
+        <button class="rounded-lg bg-basil px-3 py-1.5 text-sm font-semibold text-white">Save</button>
+        <button type="button" hx-get="/partials/admin-row/{{ i.id }}" hx-target="#admin-{{ i.id }}" hx-swap="outerHTML"
+                class="rounded-lg border border-line px-3 py-1.5 text-sm">Cancel</button>
+      </div>
+    </form>
+  </td>
+</tr>

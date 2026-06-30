@@ -1,0 +1,462 @@
+"""`inv` — agent-facing CLI for the household inventory.
+
+Conventions follow github.com/vyakimov/llm-cli-skill: stdout is a single JSON envelope,
+diagnostics go to stderr, errors carry snake_case `error.type` codes, mutations are
+dry-runnable, and relative ops can be made idempotent with --request-id.
+"""
+import argparse
+import json
+import sys
+
+from . import db, mutations, queries
+
+SCHEMA_VERSION = 1
+
+EXIT = {
+    "ok": 0,
+    "internal_error": 1,
+    "resource_not_found": 2,
+    "ambiguous_match": 3,
+    "invalid_arguments": 4,
+    "conflict": 5,
+}
+
+
+# --- envelope helpers ---
+def ok(action: str, result, **meta) -> dict:
+    return {"ok": True, "action": action, "result": result,
+            "meta": {"schema_version": SCHEMA_VERSION, **meta}}
+
+
+def err(action: str, type_: str, message: str, **details) -> dict:
+    return {"ok": False, "action": action,
+            "error": {"type": type_, "message": message, "details": details}}
+
+
+class OpError(Exception):
+    def __init__(self, type_, message, **details):
+        super().__init__(message)
+        self.type = type_
+        self.message = message
+        self.details = details
+
+
+# --- resolution ---
+def _lookup(conn, item_id, term):
+    if item_id is not None:
+        it = queries.get_item(conn, item_id)
+        return ("ok", [it]) if it else ("not_found", [])
+    return queries.resolve(conn, term)
+
+
+def _resolve_or_raise(conn, item_id, term):
+    status, matches = _lookup(conn, item_id, term)
+    if status == "ok":
+        return matches[0]
+    if status == "ambiguous":
+        raise OpError("ambiguous_match", f"{len(matches)} items matched {term!r}",
+                      query=term, candidates=[{"id": m["id"], "item": m["item"]} for m in matches])
+    raise OpError("resource_not_found",
+                  f"no item matched {term!r}" if term else f"no item with id {item_id}",
+                  query=term, suggestions=queries.suggest(conn, term or ""),
+                  hint="run `inv catalog` to resolve semantically, then apply with --id")
+
+
+def _parse_bool(s) -> bool:
+    return str(s).strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+# --- mutation runner (handles replay, dry-run, learn-alias, unit warning) ---
+def _replay(conn, request_id):
+    if not request_id:
+        return None
+    row = conn.execute("SELECT * FROM events WHERE request_id = ?", (request_id,)).fetchone()
+    if not row:
+        return None
+    cur = queries.get_item(conn, row["item_id"]) or {}
+    return {
+        "id": row["item_id"], "item": row["item_name"],
+        "unit": cur.get("unit"), "before": row["qty_before"],
+        "delta": row["delta"], "after": row["qty_after"],
+        "is_low": bool(cur.get("is_low")), "low_changed": False,
+        "on_the_way": bool(cur.get("on_the_way")), "clamped": False,
+        "event_id": row["id"],
+    }
+
+
+def _run_mutation(conn, action, args, apply_fn):
+    replayed = _replay(conn, getattr(args, "request_id", None))
+    if replayed is not None:
+        return ok(action, replayed, source=args.source, dry_run=False, idempotent_replay=True)
+
+    try:
+        item = _resolve_or_raise(conn, getattr(args, "id", None), getattr(args, "item", None))
+    except OpError as e:
+        return err(action, e.type, e.message, **e.details)
+
+    warnings = []
+    unit = getattr(args, "unit", None)
+    if unit and unit != item["unit"]:
+        warnings.append(f"requested unit {unit!r} != item unit {item['unit']!r}")
+        print(warnings[-1], file=sys.stderr)
+
+    conn.execute("BEGIN")
+    try:
+        result = apply_fn(conn, item)
+        if getattr(args, "learn_alias", None):
+            mutations.add_alias(conn, item["id"], args.learn_alias, source=args.source)
+            result["learned_alias"] = args.learn_alias
+        conn.execute("ROLLBACK" if args.dry_run else "COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    meta = {"source": args.source, "dry_run": bool(args.dry_run)}
+    if warnings:
+        meta["warnings"] = warnings
+    return ok(action, result, **meta)
+
+
+# --- command handlers ---
+def cmd_take(conn, args):
+    if args.qty <= 0:
+        return err("take", "invalid_arguments", "qty must be > 0")
+    return _run_mutation(conn, "take", args, lambda c, it: mutations.adjust_quantity(
+        c, it["id"], -args.qty, op="take", source=args.source, note=args.note,
+        request_id=args.request_id))
+
+
+def cmd_put(conn, args):
+    if args.qty <= 0:
+        return err("put", "invalid_arguments", "qty must be > 0")
+    return _run_mutation(conn, "put", args, lambda c, it: mutations.adjust_quantity(
+        c, it["id"], args.qty, op="put", source=args.source, note=args.note,
+        request_id=args.request_id))
+
+
+def cmd_set(conn, args):
+    if args.qty < 0:
+        return err("set", "invalid_arguments", "qty must be >= 0")
+    return _run_mutation(conn, "set", args, lambda c, it: mutations.set_quantity(
+        c, it["id"], args.qty, source=args.source, note=args.note, request_id=args.request_id))
+
+
+def cmd_on_the_way(conn, args):
+    val = _parse_bool(args.value)
+    return _run_mutation(conn, "on_the_way", args, lambda c, it: mutations.set_on_the_way(
+        c, it["id"], val, source=args.source, request_id=args.request_id))
+
+
+def cmd_get(conn, args):
+    try:
+        item = _resolve_or_raise(conn, args.id, args.item)
+    except OpError as e:
+        return err("get", e.type, e.message, **e.details)
+    return ok("get", item)
+
+
+def cmd_search(conn, args):
+    items = queries.list_items(conn, "all", args.term)
+    return ok("search", {"items": items, "count": len(items)}, query=args.term)
+
+
+def cmd_catalog(conn, args):
+    items = queries.catalog(conn)
+    return ok("catalog", {"items": items, "count": len(items)})
+
+
+def cmd_list(conn, args):
+    items = queries.list_items(conn, args.tab, args.q)
+    return ok("list", {"items": items, "count": len(items)}, tab=args.tab)
+
+
+def cmd_log(conn, args):
+    where, params = "", []
+    if args.item or args.id is not None:
+        try:
+            item = _resolve_or_raise(conn, args.id, args.item)
+        except OpError as e:
+            return err("log", e.type, e.message, **e.details)
+        where, params = "WHERE item_id = ?", [item["id"]]
+    rows = conn.execute(
+        f"SELECT * FROM events {where} ORDER BY id DESC LIMIT ?", [*params, args.limit]
+    ).fetchall()
+    return ok("log", {"events": [dict(r) for r in rows], "count": len(rows)})
+
+
+def cmd_new(conn, args):
+    fields = {
+        "item": args.item, "category": args.category, "unit": args.unit,
+        "aliases": args.alias or "", "quantity": args.qty, "step": args.step,
+        "low_stock_threshold": args.threshold, "necessity": args.necessity,
+        "shopping_item_name": args.shopping_name or "", "notes": args.notes or "",
+    }
+    conn.execute("BEGIN")
+    try:
+        item = mutations.create_item(conn, fields, source=args.source)
+        conn.execute("ROLLBACK" if args.dry_run else "COMMIT")
+    except mutations.ValidationError as e:
+        conn.execute("ROLLBACK")
+        return err("new", "conflict" if "exists" in str(e) else "invalid_arguments", str(e))
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return ok("new", item, source=args.source, dry_run=bool(args.dry_run))
+
+
+def cmd_edit(conn, args):
+    fields = {k: v for k, v in {
+        "item": args.rename, "category": args.category, "unit": args.unit,
+        "aliases": args.aliases, "quantity": args.qty, "step": args.step,
+        "low_stock_threshold": args.threshold, "shopping_item_name": args.shopping_name,
+        "notes": args.notes,
+        "necessity": (None if args.necessity is None else _parse_bool(args.necessity)),
+    }.items() if v is not None}
+    try:
+        item = _resolve_or_raise(conn, args.id, args.item)
+    except OpError as e:
+        return err("edit", e.type, e.message, **e.details)
+    conn.execute("BEGIN")
+    try:
+        updated = mutations.update_item(conn, item["id"], fields, source=args.source)
+        conn.execute("ROLLBACK" if args.dry_run else "COMMIT")
+    except mutations.ValidationError as e:
+        conn.execute("ROLLBACK")
+        return err("edit", "invalid_arguments", str(e))
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return ok("edit", updated, source=args.source, dry_run=bool(args.dry_run))
+
+
+def cmd_delete(conn, args):
+    try:
+        item = _resolve_or_raise(conn, args.id, args.item)
+    except OpError as e:
+        return err("delete", e.type, e.message, **e.details)
+    conn.execute("BEGIN")
+    try:
+        removed = mutations.delete_item(conn, item["id"], source=args.source)
+        conn.execute("ROLLBACK" if args.dry_run else "COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return ok("delete", {"id": removed["id"], "item": removed["item"]},
+              source=args.source, dry_run=bool(args.dry_run))
+
+
+def cmd_alias(conn, args):
+    try:
+        item = _resolve_or_raise(conn, args.id, args.item)
+    except OpError as e:
+        return err("alias", e.type, e.message, **e.details)
+    if args.alias_cmd == "list":
+        return ok("alias", {"id": item["id"], "item": item["item"],
+                            "aliases": queries.split_aliases(item["aliases"])})
+    conn.execute("BEGIN")
+    try:
+        fn = mutations.add_alias if args.alias_cmd == "add" else mutations.remove_alias
+        updated = fn(conn, item["id"], args.value, source=args.source)
+        conn.execute("ROLLBACK" if args.dry_run else "COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return ok("alias", {"id": updated["id"], "item": updated["item"],
+                        "aliases": queries.split_aliases(updated["aliases"])},
+              dry_run=bool(args.dry_run))
+
+
+def _batch_op(conn, op: dict, source: str) -> dict:
+    kind = op.get("op")
+    item = _resolve_or_raise(conn, op.get("id"), op.get("item"))
+    if kind in ("take", "put", "adjust"):
+        qty = float(op.get("qty", 0))
+        if qty <= 0:
+            raise OpError("invalid_arguments", f"qty must be > 0 for {kind}", op=op)
+        delta = -qty if kind == "take" else qty
+        return mutations.adjust_quantity(conn, item["id"], delta, op=kind, source=source,
+                                         note=op.get("note", ""))
+    if kind == "set":
+        return mutations.set_quantity(conn, item["id"], float(op.get("qty", 0)),
+                                      source=source, note=op.get("note", ""))
+    if kind == "on_the_way":
+        return mutations.set_on_the_way(conn, item["id"], _parse_bool(op.get("value")), source=source)
+    raise OpError("invalid_arguments", f"unknown op {kind!r}", op=op)
+
+
+def cmd_batch(conn, args):
+    try:
+        ops = json.loads(sys.stdin.read())
+    except json.JSONDecodeError as e:
+        return err("batch", "invalid_arguments", f"stdin is not valid JSON: {e}")
+    if not isinstance(ops, list):
+        return err("batch", "invalid_arguments", "expected a JSON array of ops")
+    results = []
+    conn.execute("BEGIN")
+    try:
+        for i, op in enumerate(ops):
+            try:
+                results.append(_batch_op(conn, op, args.source))
+            except OpError as e:
+                conn.execute("ROLLBACK")
+                return err("batch", e.type, f"op {i}: {e.message}", index=i, **e.details)
+            except mutations.ValidationError as e:
+                conn.execute("ROLLBACK")
+                return err("batch", "invalid_arguments", f"op {i}: {e}", index=i)
+        conn.execute("ROLLBACK" if args.dry_run else "COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return ok("batch", {"results": results, "count": len(results)},
+              source=args.source, dry_run=bool(args.dry_run))
+
+
+ACTIONS = [
+    {"name": "take", "summary": "Decrease quantity (clamped at 0)", "params": ["item|--id", "qty", "--unit", "--request-id", "--learn-alias", "--dry-run"]},
+    {"name": "put", "summary": "Increase quantity", "params": ["item|--id", "qty", "--unit", "--request-id", "--learn-alias", "--dry-run"]},
+    {"name": "set", "summary": "Set exact quantity", "params": ["item|--id", "qty", "--request-id", "--dry-run"]},
+    {"name": "on-the-way", "summary": "Set the on-the-way flag", "params": ["item|--id", "true|false"]},
+    {"name": "get", "summary": "Show one item's current state", "params": ["item|--id"]},
+    {"name": "search", "summary": "Substring search over names and aliases", "params": ["term"]},
+    {"name": "catalog", "summary": "Dump all items+aliases for semantic resolution", "params": []},
+    {"name": "list", "summary": "List items by filter tab", "params": ["--tab low|necessities|all", "--q"]},
+    {"name": "new", "summary": "Create an item", "params": ["item", "--category", "--unit", "--qty", "--threshold", "--necessity", "--step", "--alias"]},
+    {"name": "edit", "summary": "Edit item fields", "params": ["item|--id", "--rename", "--category", "--unit", "--qty", "--threshold", "--necessity", "--aliases", "--step"]},
+    {"name": "delete", "summary": "Delete an item", "params": ["item|--id", "--dry-run"]},
+    {"name": "alias", "summary": "add|rm|list aliases", "params": ["add|rm|list", "item|--id", "value"]},
+    {"name": "batch", "summary": "Apply a JSON array of ops atomically (stdin)", "params": ["--dry-run", "--source"]},
+    {"name": "log", "summary": "Recent change events", "params": ["--item|--id", "--limit"]},
+    {"name": "list-actions", "summary": "This list", "params": []},
+]
+
+
+def build_parser() -> argparse.ArgumentParser:
+    # default=SUPPRESS so these may appear before OR after the subcommand without the
+    # subparser's copy clobbering a value the top-level parser already parsed.
+    g = argparse.ArgumentParser(add_help=False)
+    g.add_argument("--pretty", action="store_true", default=argparse.SUPPRESS,
+                   help="indent JSON output")
+    g.add_argument("--db", default=argparse.SUPPRESS,
+                   help="path to the SQLite database (overrides default)")
+
+    # shared options for quantity-style mutations
+    m = argparse.ArgumentParser(add_help=False)
+    m.add_argument("item", nargs="?", help="item name or alias")
+    m.add_argument("--id", type=int, help="resolve by item id instead of name")
+    m.add_argument("--source", default="cli", help="event source tag (e.g. agent)")
+    m.add_argument("--note", default="", help="note recorded in the event log")
+    m.add_argument("--request-id", dest="request_id", help="idempotency key (dedup via events)")
+    m.add_argument("--dry-run", dest="dry_run", action="store_true")
+
+    p = argparse.ArgumentParser(prog="inv", parents=[g])
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    for name in ("take", "put", "set"):
+        sp = sub.add_parser(name, parents=[g, m])
+        sp.add_argument("qty", type=float)
+        if name != "set":
+            sp.add_argument("--unit")
+            sp.add_argument("--learn-alias", dest="learn_alias")
+
+    sp = sub.add_parser("on-the-way", parents=[g, m])
+    sp.add_argument("value", help="true/false")
+
+    sp = sub.add_parser("get", parents=[g])
+    sp.add_argument("item", nargs="?")
+    sp.add_argument("--id", type=int)
+
+    sp = sub.add_parser("search", parents=[g])
+    sp.add_argument("term")
+
+    sub.add_parser("catalog", parents=[g])
+
+    sp = sub.add_parser("list", parents=[g])
+    sp.add_argument("--tab", choices=["low", "necessities", "all"], default="all")
+    sp.add_argument("--q")
+
+    sp = sub.add_parser("new", parents=[g])
+    sp.add_argument("item")
+    sp.add_argument("--category", required=True)
+    sp.add_argument("--unit", default="units")
+    sp.add_argument("--qty", type=float, default=0)
+    sp.add_argument("--step", type=float, default=1)
+    sp.add_argument("--threshold", type=float, default=0)
+    sp.add_argument("--necessity", action="store_true")
+    sp.add_argument("--alias")
+    sp.add_argument("--shopping-name", dest="shopping_name")
+    sp.add_argument("--notes")
+    sp.add_argument("--source", default="cli")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true")
+
+    sp = sub.add_parser("edit", parents=[g])
+    sp.add_argument("item", nargs="?")
+    sp.add_argument("--id", type=int)
+    sp.add_argument("--rename")
+    sp.add_argument("--category")
+    sp.add_argument("--unit")
+    sp.add_argument("--qty", type=float)
+    sp.add_argument("--step", type=float)
+    sp.add_argument("--threshold", type=float)
+    sp.add_argument("--necessity")
+    sp.add_argument("--aliases")
+    sp.add_argument("--shopping-name", dest="shopping_name")
+    sp.add_argument("--notes")
+    sp.add_argument("--source", default="cli")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true")
+
+    sp = sub.add_parser("delete", parents=[g])
+    sp.add_argument("item", nargs="?")
+    sp.add_argument("--id", type=int)
+    sp.add_argument("--source", default="cli")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true")
+
+    sp = sub.add_parser("alias", parents=[g])
+    sp.add_argument("alias_cmd", choices=["add", "rm", "list"])
+    sp.add_argument("item", nargs="?")
+    sp.add_argument("value", nargs="?", help="the alias (for add/rm)")
+    sp.add_argument("--id", type=int)
+    sp.add_argument("--source", default="cli")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true")
+
+    sp = sub.add_parser("batch", parents=[g])
+    sp.add_argument("--source", default="cli")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true")
+
+    sp = sub.add_parser("log", parents=[g])
+    sp.add_argument("item", nargs="?")
+    sp.add_argument("--id", type=int)
+    sp.add_argument("--limit", type=int, default=20)
+
+    sub.add_parser("list-actions", parents=[g])
+    return p
+
+
+HANDLERS = {
+    "take": cmd_take, "put": cmd_put, "set": cmd_set, "on-the-way": cmd_on_the_way,
+    "get": cmd_get, "search": cmd_search, "catalog": cmd_catalog, "list": cmd_list,
+    "new": cmd_new, "edit": cmd_edit, "delete": cmd_delete, "alias": cmd_alias,
+    "batch": cmd_batch, "log": cmd_log,
+}
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    if args.cmd == "list-actions":
+        env = ok("list-actions", {"actions": ACTIONS})
+    else:
+        conn = db.connect(getattr(args, "db", None))
+        try:
+            env = HANDLERS[args.cmd](conn, args)
+        except mutations.ValidationError as e:
+            env = err(args.cmd, "invalid_arguments", str(e))
+        except Exception as e:  # noqa: BLE001 - surface as a clean envelope
+            env = err(args.cmd, "internal_error", f"{type(e).__name__}: {e}")
+        finally:
+            conn.close()
+
+    print(json.dumps(env, indent=2 if getattr(args, "pretty", False) else None))
+    code = 0 if env["ok"] else EXIT.get(env["error"]["type"], 1)
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

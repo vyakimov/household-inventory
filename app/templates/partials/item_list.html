@@ -1,0 +1,12 @@
+{% for category, items in groups %}
+<section class="mb-6">
+  <h2 class="mb-2 ml-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted">{{ category }}</h2>
+  <div class="space-y-2.5">
+    {% for i in items %}{% include "partials/item_card.html" %}{% endfor %}
+  </div>
+</section>
+{% else %}
+<div class="rounded-2xl border border-dashed border-line py-12 text-center text-muted">
+  Nothing to show here.
+</div>
+{% endfor %}

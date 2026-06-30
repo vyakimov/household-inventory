@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}Inventory{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: {
+        colors: {
+          paper: '#F3F4EF', surface: '#FFFFFF', line: '#E4E3DA',
+          ink: '#25241E', muted: '#6E6B61',
+          basil: '#2F5D43', 'basil-tint': '#E7EFE8',
+          amber: '#9C6014', 'amber-tint': '#F4E8D3',
+          denim: '#41557C', 'denim-tint': '#E6E9F1',
+        },
+        fontFamily: {
+          sans: ['"Hanken Grotesk"', 'system-ui', 'sans-serif'],
+          display: ['"Bricolage Grotesque"', '"Hanken Grotesk"', 'sans-serif'],
+        },
+      } }
+    }
+  </script>
+  <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="bg-paper font-sans text-ink antialiased">
+  <main class="mx-auto min-h-screen max-w-screen-sm px-4 pb-28 pt-5">
+    {% block content %}{% endblock %}
+  </main>
+
+  {% set path = request.url.path %}
+  <nav class="fixed inset-x-0 bottom-0 border-t border-line bg-surface">
+    <div class="mx-auto flex max-w-screen-sm">
+      {% set nav = [('/', 'Inventory'), ('/admin', 'Manage'), ('/import-export', 'Export')] %}
+      {% for href, label in nav %}
+      {% set active = (path == href) if href == '/' else path.startswith(href) %}
+      <a href="{{ href }}" aria-current="{{ 'page' if active else 'false' }}"
+         class="flex-1 py-3 text-center text-sm font-medium {{ 'text-basil' if active else 'text-muted' }}">
+        {{ label }}
+      </a>
+      {% endfor %}
+    </div>
+  </nav>
+</body>
+</html>

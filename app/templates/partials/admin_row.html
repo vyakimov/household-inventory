@@ -1,0 +1,18 @@
+<tr id="admin-{{ i.id }}" class="align-top">
+  <td class="p-2.5 font-medium">
+    {{ i.item }}
+    {% if i.aliases %}<div class="text-xs font-normal text-muted">{{ i.aliases }}</div>{% endif %}
+  </td>
+  <td class="p-2.5 text-muted">{{ i.category }}</td>
+  <td class="p-2.5 tabular-nums">{{ i.quantity|num }}</td>
+  <td class="p-2.5 text-muted">{{ i.unit }}</td>
+  <td class="p-2.5 tabular-nums">{{ i.low_stock_threshold|num }}</td>
+  <td class="p-2.5 text-center {{ 'text-basil' if i.necessity else 'text-line' }}">{{ '●' if i.necessity else '–' }}</td>
+  <td class="whitespace-nowrap p-2.5 text-right">
+    <button hx-get="/partials/admin-row/{{ i.id }}/edit" hx-target="#admin-{{ i.id }}" hx-swap="outerHTML"
+            class="rounded-md border border-line px-2 py-1 text-xs font-medium">Edit</button>
+    <button hx-post="/items/{{ i.id }}/delete" hx-target="#admin-{{ i.id }}" hx-swap="outerHTML"
+            hx-confirm="Delete {{ i.item }}?"
+            class="rounded-md px-2 py-1 text-xs font-medium text-amber">Delete</button>
+  </td>
+</tr>

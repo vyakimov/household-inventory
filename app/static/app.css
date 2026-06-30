@@ -1,0 +1,47 @@
+/* Supplemental styles; the Tailwind config (in base.html) carries the visual system. */
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Visible keyboard focus in the brand colour. */
+:where(a, button, input, select):focus-visible {
+  outline: 2px solid #2f5d43;
+  outline-offset: 2px;
+}
+
+/* Tidy the small inline quantity inputs. */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Respect iOS safe-area for the fixed bottom nav. */
+nav {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Gentle settle when HTMX swaps a card in. */
+.fade-in {
+  animation: fade-in 0.18s ease-out;
+}
+@keyframes fade-in {
+  from { opacity: 0.5; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

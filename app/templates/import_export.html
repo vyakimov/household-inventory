@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Export{% endblock %}
+{% block content %}
+<header class="mb-4">
+  <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Household</p>
+  <h1 class="font-display text-3xl font-bold tracking-tight">Export</h1>
+  <p class="mt-1 text-sm text-muted">{{ count }} items in the pantry.</p>
+</header>
+
+<div class="space-y-2.5">
+  <a href="/export/csv" class="flex items-center justify-between rounded-2xl border border-line bg-surface p-4">
+    <div>
+      <div class="font-semibold">Download CSV</div>
+      <div class="text-sm text-muted">Every item as a spreadsheet.</div>
+    </div>
+    <span class="text-basil" aria-hidden="true">↓</span>
+  </a>
+  <a href="/backup/sqlite" class="flex items-center justify-between rounded-2xl border border-line bg-surface p-4">
+    <div>
+      <div class="font-semibold">Download backup</div>
+      <div class="text-sm text-muted">A consistent snapshot of the whole database.</div>
+    </div>
+    <span class="text-basil" aria-hidden="true">↓</span>
+  </a>
+</div>
+
+<p class="mt-6 text-xs leading-relaxed text-muted">
+  Importing from Notion or CSV runs from the command line
+  (<code class="rounded bg-line/60 px-1">uv run python scripts/import_from_notion.py</code>).
+  Daily backups are handled automatically once the launchd job is installed.
+</p>
+{% endblock %}
