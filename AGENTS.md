@@ -11,7 +11,7 @@ a package, exposing the `inv` console script.
 
 ```bash
 uv sync                                   # venv + deps
-uv run pytest -q                          # 37 tests — keep them green
+uv run pytest -q                          # keep tests green
 uv run ruff check .                        # lint (config in pyproject.toml)
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8502   # serve
 uv run python scripts/init_db.py          # create schema + seed lookups
@@ -51,8 +51,8 @@ same `queries`/`mutations`, so behavior stays identical between web and CLI.
 - **Every mutation writes an `events` row** (op, delta, before/after, source, request_id).
   Keep this when adding mutations.
 - **`v_items` is the source of truth for status.** It computes `is_low` and `needs_buy`
-  over all rows; the filter tabs (`low`/`necessities`/`all`) are just WHERE clauses on
-  it. Don't recompute low-stock logic elsewhere.
+  over all rows; the filter tabs (`low`/`necessities`/`needs-buy`/`all`) are just WHERE
+  clauses on it. Don't recompute low-stock logic elsewhere.
 - **quantity clamps at 0** (never negative). **`on_the_way` never auto-clears** on
   restock — it's manual only.
 - **category/unit are FK lookup tables** (`categories`, `units`), seeded from the Notion
@@ -73,7 +73,15 @@ Built to the `llm-cli-skill` conventions (github.com/vyakimov/llm-cli-skill):
   `internal_error`. Exit code mirrors it (`EXIT` map); agents branch on `error.type`.
 - **Resolution is tiered** (exact name → exact alias → normalized → fuzzy). One confident
   match proceeds; several → `ambiguous_match` (refuse, list candidates); none →
-  `resource_not_found` with a hint to run `inv catalog` and apply by `--id`.
+  `resource_not_found` with suggestions that include item IDs, plus a hint to run
+  `inv catalog` and apply by `--id`.
+- Item-bearing commands accept `--item` in addition to the positional item argument.
+  Quantity mutations accept `--qty`; `alias add/rm` accepts `--value`; `on-the-way`
+  accepts `--value`. Keep these option forms working because agent transports pass argv
+  arrays more reliably than shell-quoted positional text.
+- `inv lookups` returns valid categories and units for safe `new`/`edit` operations.
+- `inv list --tab needs-buy` lists low-stock necessities that are not already marked
+  `on_the_way`.
 - **Idempotent** relative ops via `--request-id` (deduped through `events`); **`--dry-run`**
   on all mutations; **`--learn-alias`** persists a resolved alias.
 - argparse gotcha: global flags (`--db`, `--pretty`) use `default=argparse.SUPPRESS` and
@@ -84,7 +92,8 @@ Built to the `llm-cli-skill` conventions (github.com/vyakimov/llm-cli-skill):
 
 Execs `.venv/bin/inv` directly — **no `uv`, no arbitrary Python** — and **pins the DB**
 (exports `INVENTORY_DB`, rejects any `--db` arg). Whitelist this script for remote/agent
-execution, never `uv`. Don't weaken these guarantees.
+execution, never `uv`. Wrapper-level failures must also emit the JSON envelope on stdout,
+with diagnostics on stderr only. Don't weaken these guarantees.
 
 ## Frontend
 

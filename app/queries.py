@@ -37,6 +37,8 @@ def list_items(conn: sqlite3.Connection, tab: str = "all", q: str | None = None)
         where.append("v.is_low = 1")
     elif tab == "necessities":
         where.append("v.necessity = 1")
+    elif tab == "needs-buy":
+        where.append("v.needs_buy = 1")
     if q:
         where.append("(v.item LIKE ? OR v.aliases LIKE ?)")
         params += [f"%{q}%", f"%{q}%"]
@@ -65,12 +67,13 @@ def catalog(conn: sqlite3.Connection) -> list[dict]:
         "ORDER BY item COLLATE NOCASE")]
 
 
-def suggest(conn: sqlite3.Connection, term: str, n: int = 5) -> list[str]:
-    names = [r["item"] for r in conn.execute("SELECT item FROM items")]
-    keyed = {_norm(name): name for name in names}
+def suggest(conn: sqlite3.Connection, term: str, n: int = 5) -> list[dict]:
+    rows = [dict(r) for r in conn.execute("SELECT id, item FROM items")]
+    keyed = {_norm(r["item"]): r for r in rows}
     out = []
     for key in difflib.get_close_matches(_norm(term), list(keyed), n=n, cutoff=0.5):
-        out.append(keyed[key])
+        row = keyed[key]
+        out.append({"id": row["id"], "item": row["item"]})
     return out
 
 

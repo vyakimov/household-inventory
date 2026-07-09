@@ -66,7 +66,7 @@ Import/export: `POST /import/csv`, `GET /export/csv`, `GET /backup/sqlite`.
 
 Shares `mutations.py`/`queries.py` with the web app; same SQLite file (WAL handles concurrent web+CLI access). The CLI is the safe structured surface — the agent never writes SQL. **Built to the `llm-cli-skill` conventions** ([github.com/vyakimov/llm-cli-skill](https://github.com/vyakimov/llm-cli-skill)); apply that skill when implementing and reviewing it.
 
-Commands: `inv take|put|set|on-the-way|new|edit|delete|batch|catalog|alias|log|list-actions`
+Commands: `inv take|put|set|on-the-way|get|search|new|edit|delete|batch|catalog|lookups|alias|log|list|list-actions`
 
 **Output contract (per skill):**
 - **stdout is JSON only** — one envelope per call, no banners; diagnostics/progress/warnings go to **stderr**; `--pretty` indents.
@@ -75,7 +75,9 @@ Commands: `inv take|put|set|on-the-way|new|edit|delete|batch|catalog|alias|log|l
 - **Self-describing:** `inv list-actions` returns the action list with params + descriptions; `--help` per command.
 - **Stateless / idempotent / dry-run:** every call self-contained; `set`/`on-the-way` are idempotent; relative `take`/`put` accept an optional `--request-id` (deduped via `events`; a replay returns the original result with `meta.idempotent_replay=true`) so retries can't double-apply; all mutating commands support `--dry-run`. Flags: `--source agent`, `--id`, `--pretty`.
 
-**Resolution tiers:** exact canonical → exact alias → normalized → fuzzy (confidence threshold). Unique hit proceeds; multiple above threshold → `ambiguous_match` (candidates in `error.details`); none → `resource_not_found` with a hint. `--id` bypasses resolution.
+**Resolution tiers:** exact canonical → exact alias → normalized → fuzzy (confidence threshold). Unique hit proceeds; multiple above threshold → `ambiguous_match` (candidates in `error.details`); none → `resource_not_found` with suggestions that include IDs. `--id` bypasses resolution, and `--item` is accepted for item-bearing commands so agents can avoid positional ambiguity.
+
+**Lookup/list helpers:** `inv lookups` returns valid categories + units for item creation/editing. `inv list --tab needs-buy` lists low-stock necessities that are not already marked on the way.
 
 **Atomic batch:** `inv batch` applies multiple ops from stdin JSON in one transaction; any failure rolls back the whole batch.
 

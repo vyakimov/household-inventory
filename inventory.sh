@@ -24,7 +24,7 @@ DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 
 INV="$DIR/.venv/bin/inv"
 if [ ! -x "$INV" ]; then
-    echo '{"ok": false, "action": "wrapper", "error": {"type": "internal_error", "message": "inventory venv not found; run `uv sync` in the project directory"}}' >&2
+    echo '{"ok": false, "action": "wrapper", "error": {"type": "internal_error", "message": "inventory venv not found; run `uv sync` in the project directory"}}'
     exit 1
 fi
 
@@ -33,7 +33,7 @@ fi
 for arg in "$@"; do
     case "$arg" in
         --db|--db=*)
-            echo '{"ok": false, "action": "wrapper", "error": {"type": "permission_denied", "message": "--db is not allowed via inventory.sh; the database is pinned"}}' >&2
+            echo '{"ok": false, "action": "wrapper", "error": {"type": "permission_denied", "message": "--db is not allowed via inventory.sh; the database is pinned"}}'
             exit 1
             ;;
     esac

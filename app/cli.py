@@ -66,6 +66,55 @@ def _parse_bool(s) -> bool:
     return str(s).strip().lower() in ("1", "true", "yes", "y", "on")
 
 
+def _item_arg(args):
+    if getattr(args, "id", None) is not None:
+        return None
+    return getattr(args, "item_option", None) or getattr(args, "item", None)
+
+
+def _qty_arg(args):
+    qty = getattr(args, "qty_option", None)
+    if qty is not None:
+        return qty
+    qty = getattr(args, "qty", None)
+    if qty is not None:
+        return qty
+    # Allows: inv take --item "toilet paper" 1 and inv take --id 3 1
+    has_explicit_item_ref = (
+        getattr(args, "item_option", None) or getattr(args, "id", None) is not None
+    )
+    if has_explicit_item_ref and getattr(args, "item", None):
+        try:
+            return float(args.item)
+        except ValueError:
+            return None
+    return None
+
+
+def _on_the_way_value(args):
+    value = getattr(args, "value_option", None)
+    if value is not None:
+        return value
+    value = getattr(args, "value", None)
+    if value is not None:
+        return value
+    # Allows: inv on-the-way --item "toilet paper" true
+    if getattr(args, "item_option", None) or getattr(args, "id", None) is not None:
+        return getattr(args, "item", None)
+    return None
+
+
+def _alias_value(args):
+    if getattr(args, "value_option", None) is not None:
+        return args.value_option
+    if getattr(args, "value", None) is not None:
+        return args.value
+    # Allows: inv alias add --item "toilet paper" TP
+    if getattr(args, "item_option", None) or getattr(args, "id", None) is not None:
+        return getattr(args, "item", None)
+    return None
+
+
 # --- mutation runner (handles replay, dry-run, learn-alias, unit warning) ---
 def _replay(conn, request_id):
     if not request_id:
@@ -90,7 +139,7 @@ def _run_mutation(conn, action, args, apply_fn):
         return ok(action, replayed, source=args.source, dry_run=False, idempotent_replay=True)
 
     try:
-        item = _resolve_or_raise(conn, getattr(args, "id", None), getattr(args, "item", None))
+        item = _resolve_or_raise(conn, getattr(args, "id", None), _item_arg(args))
     except OpError as e:
         return err(action, e.type, e.message, **e.details)
 
@@ -118,37 +167,43 @@ def _run_mutation(conn, action, args, apply_fn):
 
 # --- command handlers ---
 def cmd_take(conn, args):
-    if args.qty <= 0:
+    qty = _qty_arg(args)
+    if qty is None or qty <= 0:
         return err("take", "invalid_arguments", "qty must be > 0")
     return _run_mutation(conn, "take", args, lambda c, it: mutations.adjust_quantity(
-        c, it["id"], -args.qty, op="take", source=args.source, note=args.note,
+        c, it["id"], -qty, op="take", source=args.source, note=args.note,
         request_id=args.request_id))
 
 
 def cmd_put(conn, args):
-    if args.qty <= 0:
+    qty = _qty_arg(args)
+    if qty is None or qty <= 0:
         return err("put", "invalid_arguments", "qty must be > 0")
     return _run_mutation(conn, "put", args, lambda c, it: mutations.adjust_quantity(
-        c, it["id"], args.qty, op="put", source=args.source, note=args.note,
+        c, it["id"], qty, op="put", source=args.source, note=args.note,
         request_id=args.request_id))
 
 
 def cmd_set(conn, args):
-    if args.qty < 0:
+    qty = _qty_arg(args)
+    if qty is None or qty < 0:
         return err("set", "invalid_arguments", "qty must be >= 0")
     return _run_mutation(conn, "set", args, lambda c, it: mutations.set_quantity(
-        c, it["id"], args.qty, source=args.source, note=args.note, request_id=args.request_id))
+        c, it["id"], qty, source=args.source, note=args.note, request_id=args.request_id))
 
 
 def cmd_on_the_way(conn, args):
-    val = _parse_bool(args.value)
+    value = _on_the_way_value(args)
+    if value is None:
+        return err("on_the_way", "invalid_arguments", "value must be true or false")
+    val = _parse_bool(value)
     return _run_mutation(conn, "on_the_way", args, lambda c, it: mutations.set_on_the_way(
         c, it["id"], val, source=args.source, request_id=args.request_id))
 
 
 def cmd_get(conn, args):
     try:
-        item = _resolve_or_raise(conn, args.id, args.item)
+        item = _resolve_or_raise(conn, args.id, _item_arg(args))
     except OpError as e:
         return err("get", e.type, e.message, **e.details)
     return ok("get", item)
@@ -169,11 +224,16 @@ def cmd_list(conn, args):
     return ok("list", {"items": items, "count": len(items)}, tab=args.tab)
 
 
+def cmd_lookups(conn, args):
+    return ok("lookups", {"categories": queries.categories(conn), "units": queries.units(conn)})
+
+
 def cmd_log(conn, args):
     where, params = "", []
-    if args.item or args.id is not None:
+    item_arg = _item_arg(args)
+    if item_arg or args.id is not None:
         try:
-            item = _resolve_or_raise(conn, args.id, args.item)
+            item = _resolve_or_raise(conn, args.id, item_arg)
         except OpError as e:
             return err("log", e.type, e.message, **e.details)
         where, params = "WHERE item_id = ?", [item["id"]]
@@ -212,7 +272,7 @@ def cmd_edit(conn, args):
         "necessity": (None if args.necessity is None else _parse_bool(args.necessity)),
     }.items() if v is not None}
     try:
-        item = _resolve_or_raise(conn, args.id, args.item)
+        item = _resolve_or_raise(conn, args.id, _item_arg(args))
     except OpError as e:
         return err("edit", e.type, e.message, **e.details)
     conn.execute("BEGIN")
@@ -230,7 +290,7 @@ def cmd_edit(conn, args):
 
 def cmd_delete(conn, args):
     try:
-        item = _resolve_or_raise(conn, args.id, args.item)
+        item = _resolve_or_raise(conn, args.id, _item_arg(args))
     except OpError as e:
         return err("delete", e.type, e.message, **e.details)
     conn.execute("BEGIN")
@@ -246,16 +306,19 @@ def cmd_delete(conn, args):
 
 def cmd_alias(conn, args):
     try:
-        item = _resolve_or_raise(conn, args.id, args.item)
+        item = _resolve_or_raise(conn, args.id, _item_arg(args))
     except OpError as e:
         return err("alias", e.type, e.message, **e.details)
     if args.alias_cmd == "list":
         return ok("alias", {"id": item["id"], "item": item["item"],
                             "aliases": queries.split_aliases(item["aliases"])})
+    value = _alias_value(args)
+    if not value:
+        return err("alias", "invalid_arguments", "alias value is required")
     conn.execute("BEGIN")
     try:
         fn = mutations.add_alias if args.alias_cmd == "add" else mutations.remove_alias
-        updated = fn(conn, item["id"], args.value, source=args.source)
+        updated = fn(conn, item["id"], value, source=args.source)
         conn.execute("ROLLBACK" if args.dry_run else "COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
@@ -311,20 +374,21 @@ def cmd_batch(conn, args):
 
 
 ACTIONS = [
-    {"name": "take", "summary": "Decrease quantity (clamped at 0)", "params": ["item|--id", "qty", "--unit", "--request-id", "--learn-alias", "--dry-run"]},
-    {"name": "put", "summary": "Increase quantity", "params": ["item|--id", "qty", "--unit", "--request-id", "--learn-alias", "--dry-run"]},
-    {"name": "set", "summary": "Set exact quantity", "params": ["item|--id", "qty", "--request-id", "--dry-run"]},
-    {"name": "on-the-way", "summary": "Set the on-the-way flag", "params": ["item|--id", "true|false"]},
-    {"name": "get", "summary": "Show one item's current state", "params": ["item|--id"]},
+    {"name": "take", "summary": "Decrease quantity (clamped at 0)", "params": ["item|--item|--id", "qty|--qty", "--unit", "--request-id", "--learn-alias", "--dry-run"]},
+    {"name": "put", "summary": "Increase quantity", "params": ["item|--item|--id", "qty|--qty", "--unit", "--request-id", "--learn-alias", "--dry-run"]},
+    {"name": "set", "summary": "Set exact quantity", "params": ["item|--item|--id", "qty|--qty", "--request-id", "--dry-run"]},
+    {"name": "on-the-way", "summary": "Set the on-the-way flag", "params": ["item|--item|--id", "true|false|--value"]},
+    {"name": "get", "summary": "Show one item's current state", "params": ["item|--item|--id"]},
     {"name": "search", "summary": "Substring search over names and aliases", "params": ["term"]},
     {"name": "catalog", "summary": "Dump all items+aliases for semantic resolution", "params": []},
-    {"name": "list", "summary": "List items by filter tab", "params": ["--tab low|necessities|all", "--q"]},
+    {"name": "list", "summary": "List items by filter tab", "params": ["--tab low|necessities|needs-buy|all", "--q"]},
+    {"name": "lookups", "summary": "List valid categories and units", "params": []},
     {"name": "new", "summary": "Create an item", "params": ["item", "--category", "--unit", "--qty", "--threshold", "--necessity", "--step", "--alias"]},
-    {"name": "edit", "summary": "Edit item fields", "params": ["item|--id", "--rename", "--category", "--unit", "--qty", "--threshold", "--necessity", "--aliases", "--step"]},
-    {"name": "delete", "summary": "Delete an item", "params": ["item|--id", "--dry-run"]},
-    {"name": "alias", "summary": "add|rm|list aliases", "params": ["add|rm|list", "item|--id", "value"]},
+    {"name": "edit", "summary": "Edit item fields", "params": ["item|--item|--id", "--rename", "--category", "--unit", "--qty", "--threshold", "--necessity", "--aliases", "--step"]},
+    {"name": "delete", "summary": "Delete an item", "params": ["item|--item|--id", "--dry-run"]},
+    {"name": "alias", "summary": "add|rm|list aliases", "params": ["add|rm|list", "item|--item|--id", "value|--value"]},
     {"name": "batch", "summary": "Apply a JSON array of ops atomically (stdin)", "params": ["--dry-run", "--source"]},
-    {"name": "log", "summary": "Recent change events", "params": ["--item|--id", "--limit"]},
+    {"name": "log", "summary": "Recent change events", "params": ["item|--item|--id", "--limit"]},
     {"name": "list-actions", "summary": "This list", "params": []},
 ]
 
@@ -341,6 +405,7 @@ def build_parser() -> argparse.ArgumentParser:
     # shared options for quantity-style mutations
     m = argparse.ArgumentParser(add_help=False)
     m.add_argument("item", nargs="?", help="item name or alias")
+    m.add_argument("--item", dest="item_option", help="item name or alias")
     m.add_argument("--id", type=int, help="resolve by item id instead of name")
     m.add_argument("--source", default="cli", help="event source tag (e.g. agent)")
     m.add_argument("--note", default="", help="note recorded in the event log")
@@ -352,16 +417,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     for name in ("take", "put", "set"):
         sp = sub.add_parser(name, parents=[g, m])
-        sp.add_argument("qty", type=float)
+        sp.add_argument("qty", nargs="?", type=float)
+        sp.add_argument("--qty", dest="qty_option", type=float)
         if name != "set":
             sp.add_argument("--unit")
             sp.add_argument("--learn-alias", dest="learn_alias")
 
     sp = sub.add_parser("on-the-way", parents=[g, m])
-    sp.add_argument("value", help="true/false")
+    sp.add_argument("value", nargs="?", help="true/false")
+    sp.add_argument("--value", dest="value_option", help="true/false")
 
     sp = sub.add_parser("get", parents=[g])
     sp.add_argument("item", nargs="?")
+    sp.add_argument("--item", dest="item_option")
     sp.add_argument("--id", type=int)
 
     sp = sub.add_parser("search", parents=[g])
@@ -370,8 +438,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("catalog", parents=[g])
 
     sp = sub.add_parser("list", parents=[g])
-    sp.add_argument("--tab", choices=["low", "necessities", "all"], default="all")
+    sp.add_argument("--tab", choices=["low", "necessities", "needs-buy", "all"], default="all")
     sp.add_argument("--q")
+
+    sub.add_parser("lookups", parents=[g])
 
     sp = sub.add_parser("new", parents=[g])
     sp.add_argument("item")
@@ -389,6 +459,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("edit", parents=[g])
     sp.add_argument("item", nargs="?")
+    sp.add_argument("--item", dest="item_option")
     sp.add_argument("--id", type=int)
     sp.add_argument("--rename")
     sp.add_argument("--category")
@@ -405,6 +476,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("delete", parents=[g])
     sp.add_argument("item", nargs="?")
+    sp.add_argument("--item", dest="item_option")
     sp.add_argument("--id", type=int)
     sp.add_argument("--source", default="cli")
     sp.add_argument("--dry-run", dest="dry_run", action="store_true")
@@ -413,6 +485,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("alias_cmd", choices=["add", "rm", "list"])
     sp.add_argument("item", nargs="?")
     sp.add_argument("value", nargs="?", help="the alias (for add/rm)")
+    sp.add_argument("--item", dest="item_option")
+    sp.add_argument("--value", dest="value_option", help="the alias (for add/rm)")
     sp.add_argument("--id", type=int)
     sp.add_argument("--source", default="cli")
     sp.add_argument("--dry-run", dest="dry_run", action="store_true")
@@ -423,6 +497,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("log", parents=[g])
     sp.add_argument("item", nargs="?")
+    sp.add_argument("--item", dest="item_option")
     sp.add_argument("--id", type=int)
     sp.add_argument("--limit", type=int, default=20)
 
@@ -433,6 +508,7 @@ def build_parser() -> argparse.ArgumentParser:
 HANDLERS = {
     "take": cmd_take, "put": cmd_put, "set": cmd_set, "on-the-way": cmd_on_the_way,
     "get": cmd_get, "search": cmd_search, "catalog": cmd_catalog, "list": cmd_list,
+    "lookups": cmd_lookups,
     "new": cmd_new, "edit": cmd_edit, "delete": cmd_delete, "alias": cmd_alias,
     "batch": cmd_batch, "log": cmd_log,
 }
