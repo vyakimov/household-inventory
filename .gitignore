@@ -12,6 +12,9 @@ inventory.db
 *.db-shm
 backups/
 
+# Logs
+logs/
+
 # Env / secrets
 .env
 

@@ -30,11 +30,11 @@ app/
   schema.sql     items, categories, units, events, and the v_items VIEW
   queries.py     read-only queries + resolve()/catalog()/split_aliases()
   mutations.py   all writes; each logs an event; ValidationError on bad input
-  exporters.py   CSV string + SQLite backup
+  exporters.py   CSV import/export + SQLite backup
   cli.py         `inv` — JSON-envelope CLI for agents
   main.py        FastAPI routes + HTMX partials; Jinja templates/ + static/
 scripts/         init_db, import_from_notion, backup_db, export_csv, install/uninstall_launchd
-tests/           low-stock logic, mutations, CLI, routes
+tests/           low-stock logic, queries, mutations, exporters, CLI, routes
 deploy/          launchd plists + notes
 inventory.sh     standalone CLI wrapper (the safe-to-whitelist remote entry point)
 ```
@@ -101,8 +101,12 @@ Deliberate "enamel kitchen" design — **do not regress to generic gray Tailwind
 fonts, and the signature **stock gauge** (left card edge, fills quantity-vs-threshold) are
 defined in `tailwind.config` inline in `base.html` plus `app/static/app.css`. Tailwind +
 HTMX load from CDN (v1). Preserve HTMX target ids (`item-{id}`, `item-list`,
-`inventory-body`, `admin-tbody`) and form field names (`q`, `tab`, `quantity`, `value`)
-when editing templates — routes and tests depend on them.
+`inventory-body`, `admin-tbody`, `low-count`) and form field names (`q`, `tab`,
+`quantity`, `value`, `file`) when editing templates — routes and tests depend on them.
+Card-mutation routes emit an `HX-Trigger: low-changed` response header when a change
+crosses the low-stock threshold; `#item-list` listens for it to refilter the inventory
+body live (and `/partials/inventory` piggybacks an OOB update of the `#low-count`
+header badge). Keep that contract when touching those routes or templates.
 
 ## Secrets & data
 

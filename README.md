@@ -5,7 +5,7 @@ A phone-first web app to replace the Notion household-inventory database. FastAP
 ## Status
 
 v1 built and tested: 123 items imported from Notion (need-to-buy reconciles 7/7),
-phone-first UI with the three filter tabs + steppers, agent CLI, tests green.
+phone-first UI with the four filter tabs + steppers, agent CLI, tests green.
 
 ## Quickstart
 
@@ -16,7 +16,7 @@ cp .env.example .env                          # then set NOTION_TOKEN + NOTION_D
 uv run python scripts/import_from_notion.py   # pull live Notion data (optional)
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8502   # serve on the LAN
 
-uv run pytest -q                          # 37 tests
+uv run pytest -q                          # run the test suite
 uv run ruff check .                        # lint
 ./inventory.sh list-actions                # agent CLI via the standalone wrapper
 ```
@@ -31,17 +31,18 @@ launchd install/remove scripts see [deploy/README.md](deploy/README.md).
 inventory.sh   standalone CLI wrapper (safe to whitelist remotely)
 app/           settings, db, schema.sql, queries, mutations, exporters, cli, main, templates/, static/
 scripts/       init_db, import_from_notion, backup_db, export_csv, install_launchd, uninstall_launchd
-tests/         low-stock logic, mutations, CLI, routes  (37 tests)
+tests/         low-stock logic, queries, mutations, exporters, CLI, routes
 deploy/        launchd plists + notes
 ```
 
 ## v1 scope
 
-- **Phone-first inventory page** at `/` with filter tabs **Low stock | Necessities | All** (default Low stock) and live search. No separate restock or quick-update screens.
+- **Phone-first inventory page** at `/` with filter tabs **Low stock | To buy | Necessities | All** (default Low stock) and live search. The To buy tab is the shopping list: low-stock necessities not already marked on the way. No separate restock or quick-update screens.
 - **Quantity steppers** (`−` / value / `+`) on every card, in every view, regardless of stock level. Fractional quantities handled via a per-item `step` column (default 1, e.g. 0.1 for bag-fractions). Plus "set exact" and "add N".
 - **`On the way`** toggle (never auto-clears).
 - **Admin page** for full-field edit / add / delete (category + unit dropdowns from lookup tables).
-- **Import/export**: one-time Notion import (CLI), CSV import/export, downloadable SQLite backup.
+- **History page** at `/history` — read-only view of the `events` audit log (who changed what, when, from which source), grouped by day.
+- **Import/export**: one-time Notion import (CLI), CSV export + CSV import (web upload; upserts by name, atomic, takes a pre-import backup), downloadable SQLite backup.
 - **Agent CLI** for safe natural-language-driven updates (see below).
 - **Auth: none.** Security boundary is the LAN + WireGuard. (Auth is a v2 item.)
 
@@ -58,8 +59,8 @@ Python 3.11+, FastAPI, Uvicorn, Jinja2, HTMX, Tailwind, stdlib `sqlite3` (raw SQ
 
 ## Routes (no auth in v1)
 
-Pages: `GET /` (`?tab=`, `?q=`), `GET /admin`, `GET /import-export`.
-Partials/actions: `GET /partials/items`, `GET /partials/item/{id}`, `POST /items/{id}/inc|dec|quantity|add|on-the-way`, `GET /partials/item/{id}/edit`, `POST /items/{id}/edit|delete`, `POST /items`.
+Pages: `GET /` (`?tab=`, `?q=`), `GET /history`, `GET /admin`, `GET /import-export`.
+Partials/actions: `GET /partials/inventory`, `GET /partials/list`, `GET /partials/item/{id}`, `POST /items/{id}/inc|dec|quantity|on-the-way`, `GET /partials/admin-row/{id}[/edit]`, `POST /items/{id}/edit|delete`, `POST /items`.
 Import/export: `POST /import/csv`, `GET /export/csv`, `GET /backup/sqlite`.
 
 ## Agent CLI (`app/cli.py`)
@@ -79,7 +80,7 @@ Commands: `inv take|put|set|on-the-way|get|search|new|edit|delete|batch|catalog|
 
 **Lookup/list helpers:** `inv lookups` returns valid categories + units for item creation/editing. `inv list --tab needs-buy` lists low-stock necessities that are not already marked on the way.
 
-**Atomic batch:** `inv batch` applies multiple ops from stdin JSON in one transaction; any failure rolls back the whole batch.
+**Atomic batch:** `inv batch` applies multiple ops from stdin JSON in one transaction; any failure rolls back the whole batch. Each op is `{"op": "take|put|adjust|set|on_the_way", "item": …|"id": …, "qty": …}` (`"value"` for `on_the_way`, optional `"note"`); `qty`/`value` are required — a missing key is `invalid_arguments`, never a silent default.
 
 **Semantic fallback** (e.g. "TP" → "toilet paper" when not a registered alias): on `resource_not_found` the agent runs `inv catalog` (lean JSON dump of all items + aliases), reasons, **confirms with the user**, applies by `--id`, and optionally `--learn-alias <term>` to persist the alias atomically (logged to `events`, reversible via `inv alias rm`).
 
@@ -101,6 +102,6 @@ Daily SQLite backup (keep last 30), weekly CSV export, and a backup before any b
 
 - [ ] **Hybrid search over item names and aliases** — combine lexical full-text search (SQLite FTS5 over `item` + `aliases`) with semantic/embedding similarity, so resolution handles synonyms and abbreviations (e.g. "TP" → "toilet paper") directly in search instead of relying on the agent's `catalog` fallback. Should back both the web search box and the CLI resolver.
 - [ ] Password/auth — reverse-proxy Basic Auth or app-level FastAPI session login.
-- [ ] Auto-refilter cards on quantity change (card leaves the Low stock tab live).
+- [x] Auto-refilter cards on quantity change (card leaves the Low stock tab live) — done via `HX-Trigger: low-changed`.
 - [ ] Location / multi-location stock tracking.
 - [ ] Barcode scanning, receipt parsing, purchase history, normalized alias table, offline PWA, predictive restock.

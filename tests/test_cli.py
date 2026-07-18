@@ -125,6 +125,36 @@ def test_batch_success(db_path):
     assert code == 0 and env["ok"] and env["result"]["count"] == 2
 
 
+def test_batch_set_requires_qty(db_path):
+    code, env = run(db_path, "batch", stdin='[{"op":"set","item":"Granola"}]')
+    assert code == 4 and env["error"]["type"] == "invalid_arguments"
+    _, env = run(db_path, "get", "Granola")
+    assert env["result"]["quantity"] == 1  # not silently zeroed
+
+
+def test_batch_bad_qty_is_invalid_arguments(db_path):
+    code, env = run(db_path, "batch", stdin='[{"op":"put","item":"Granola","qty":"lots"}]')
+    assert code == 4 and env["error"]["type"] == "invalid_arguments"
+
+
+def test_batch_on_the_way_requires_value(db_path):
+    code, env = run(db_path, "batch", stdin='[{"op":"on_the_way","item":"Wet cat food"}]')
+    assert code == 4 and env["error"]["type"] == "invalid_arguments"
+    _, env = run(db_path, "get", "Wet cat food")
+    assert env["result"]["on_the_way"] == 1  # flag untouched
+
+
+def test_rename_conflict(db_path):
+    code, env = run(db_path, "edit", "Granola", "--rename", "Salt")
+    assert code == 5 and env["error"]["type"] == "conflict"
+
+
+def test_unopenable_db_still_emits_envelope(tmp_path):
+    code, env = run(str(tmp_path / "no-such-dir" / "x.db"), "get", "Granola")
+    assert code == 1 and env["ok"] is False
+    assert env["error"]["type"] == "internal_error"
+
+
 def test_list_actions(db_path):
     code, env = run(db_path, "list-actions")
     names = [a["name"] for a in env["result"]["actions"]]

@@ -1,10 +1,10 @@
-{% set labels = [('low', 'Low stock'), ('necessities', 'Necessities'), ('all', 'All')] %}
+{% set labels = [('low', 'Low stock', low_count), ('needs-buy', 'To buy', buy_count), ('necessities', 'Necessities', none), ('all', 'All', none)] %}
 <div class="mb-3 flex rounded-2xl border border-line bg-surface p-1">
-  {% for t, label in labels %}
+  {% for t, label, count in labels %}
   <button hx-get="/partials/inventory" hx-vals='{"tab": "{{ t }}"}' hx-include="[name=q]"
           hx-target="#inventory-body" hx-swap="innerHTML"
           class="flex-1 rounded-xl px-2 py-2 text-sm font-medium transition-colors {{ 'bg-basil text-white' if tab == t else 'text-muted' }}">
-    {{ label }}{% if t == 'low' %}<span class="ml-1 tabular-nums {{ 'text-white/75' if tab == t else 'text-muted' }}">{{ low_count }}</span>{% endif %}
+    {{ label }}{% if count is not none %}<span class="ml-1 tabular-nums {{ 'text-white/75' if tab == t else 'text-muted' }}">{{ count }}</span>{% endif %}
   </button>
   {% endfor %}
 </div>
@@ -21,6 +21,9 @@
          class="w-full rounded-2xl border border-line bg-surface py-3 pl-10 pr-4 text-base placeholder:text-muted focus:border-basil focus:outline-none">
 </div>
 
-<div id="item-list">
+<!-- refilter live when a mutation crosses the low-stock threshold (HX-Trigger: low-changed) -->
+<div id="item-list" hx-get="/partials/inventory" hx-trigger="low-changed from:body"
+     hx-include="[name=tab],[name=q]" hx-target="#inventory-body" hx-swap="innerHTML">
   {% include "partials/item_list.html" %}
 </div>
+{% if oob %}<span id="low-count" hx-swap-oob="true" class="shrink-0 text-sm text-muted">{{ low_count }} running low</span>{% endif %}

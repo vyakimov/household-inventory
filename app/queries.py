@@ -15,6 +15,11 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
 
+def _like(term: str) -> str:
+    """Escape LIKE wildcards so user input matches literally (pair with ESCAPE '\\')."""
+    return re.sub(r"([\\%_])", r"\\\1", term)
+
+
 def categories(conn: sqlite3.Connection) -> list[str]:
     return [r["name"] for r in conn.execute(
         "SELECT name FROM categories ORDER BY sort_order, name")]
@@ -40,8 +45,8 @@ def list_items(conn: sqlite3.Connection, tab: str = "all", q: str | None = None)
     elif tab == "needs-buy":
         where.append("v.needs_buy = 1")
     if q:
-        where.append("(v.item LIKE ? OR v.aliases LIKE ?)")
-        params += [f"%{q}%", f"%{q}%"]
+        where.append("(v.item LIKE ? ESCAPE '\\' OR v.aliases LIKE ? ESCAPE '\\')")
+        params += [f"%{_like(q)}%", f"%{_like(q)}%"]
     if where:
         sql.append("WHERE " + " AND ".join(where))
     sql.append("ORDER BY c.sort_order, v.item COLLATE NOCASE")
@@ -60,6 +65,17 @@ def count_low(conn: sqlite3.Connection) -> int:
     return conn.execute("SELECT COUNT(*) AS n FROM v_items WHERE is_low = 1").fetchone()["n"]
 
 
+def count_needs_buy(conn: sqlite3.Connection) -> int:
+    return conn.execute("SELECT COUNT(*) AS n FROM v_items WHERE needs_buy = 1").fetchone()["n"]
+
+
+def recent_events(conn: sqlite3.Connection, limit: int = 100) -> list[dict]:
+    """Newest-first audit trail; created_at is UTC, local_time is for display."""
+    return [dict(r) for r in conn.execute(
+        "SELECT *, datetime(created_at, 'localtime') AS local_time"
+        " FROM events ORDER BY id DESC LIMIT ?", (limit,))]
+
+
 def catalog(conn: sqlite3.Connection) -> list[dict]:
     """Lean dump for an agent to reason over when resolution fails."""
     return [dict(r) for r in conn.execute(
@@ -68,12 +84,17 @@ def catalog(conn: sqlite3.Connection) -> list[dict]:
 
 
 def suggest(conn: sqlite3.Connection, term: str, n: int = 5) -> list[dict]:
-    rows = [dict(r) for r in conn.execute("SELECT id, item FROM items")]
-    keyed = {_norm(r["item"]): r for r in rows}
-    out = []
+    rows = [dict(r) for r in conn.execute("SELECT id, item, aliases FROM items")]
+    keyed: dict[str, dict] = {}
+    for r in rows:
+        for label in (r["item"], *split_aliases(r["aliases"])):
+            keyed.setdefault(_norm(label), r)
+    out, seen = [], set()
     for key in difflib.get_close_matches(_norm(term), list(keyed), n=n, cutoff=0.5):
         row = keyed[key]
-        out.append({"id": row["id"], "item": row["item"]})
+        if row["id"] not in seen:
+            seen.add(row["id"])
+            out.append({"id": row["id"], "item": row["item"]})
     return out
 
 

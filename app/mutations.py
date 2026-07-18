@@ -138,6 +138,14 @@ def update_item(conn, item_id, fields: dict, *, source="cli") -> dict:
     updates = {k: v for k, v in fields.items() if k in VALID_FIELDS and v is not None}
     if not updates:
         return before
+    if "item" in updates:
+        name = (updates["item"] or "").strip()
+        if not name:
+            raise ValidationError("item name is required")
+        if conn.execute("SELECT 1 FROM items WHERE item = ? COLLATE NOCASE AND id != ?",
+                        (name, item_id)).fetchone():
+            raise ValidationError(f"item '{name}' already exists")
+        updates["item"] = name
     if "category" in updates:
         _validate_category(conn, updates["category"])
     if "unit" in updates:

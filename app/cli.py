@@ -281,7 +281,7 @@ def cmd_edit(conn, args):
         conn.execute("ROLLBACK" if args.dry_run else "COMMIT")
     except mutations.ValidationError as e:
         conn.execute("ROLLBACK")
-        return err("edit", "invalid_arguments", str(e))
+        return err("edit", "conflict" if "exists" in str(e) else "invalid_arguments", str(e))
     except Exception:
         conn.execute("ROLLBACK")
         raise
@@ -328,21 +328,34 @@ def cmd_alias(conn, args):
               dry_run=bool(args.dry_run))
 
 
+def _batch_qty(op: dict, kind: str) -> float:
+    """Required, numeric. A missing qty must never silently default to 0."""
+    if "qty" not in op:
+        raise OpError("invalid_arguments", f"{kind} requires qty", op=op)
+    try:
+        return float(op["qty"])
+    except (TypeError, ValueError):
+        raise OpError("invalid_arguments",
+                      f"qty must be a number, got {op['qty']!r}", op=op) from None
+
+
 def _batch_op(conn, op: dict, source: str) -> dict:
     kind = op.get("op")
     item = _resolve_or_raise(conn, op.get("id"), op.get("item"))
     if kind in ("take", "put", "adjust"):
-        qty = float(op.get("qty", 0))
+        qty = _batch_qty(op, kind)
         if qty <= 0:
             raise OpError("invalid_arguments", f"qty must be > 0 for {kind}", op=op)
         delta = -qty if kind == "take" else qty
         return mutations.adjust_quantity(conn, item["id"], delta, op=kind, source=source,
                                          note=op.get("note", ""))
     if kind == "set":
-        return mutations.set_quantity(conn, item["id"], float(op.get("qty", 0)),
+        return mutations.set_quantity(conn, item["id"], _batch_qty(op, "set"),
                                       source=source, note=op.get("note", ""))
     if kind == "on_the_way":
-        return mutations.set_on_the_way(conn, item["id"], _parse_bool(op.get("value")), source=source)
+        if "value" not in op:
+            raise OpError("invalid_arguments", "on_the_way requires value", op=op)
+        return mutations.set_on_the_way(conn, item["id"], _parse_bool(op["value"]), source=source)
     raise OpError("invalid_arguments", f"unknown op {kind!r}", op=op)
 
 
@@ -519,15 +532,17 @@ def main(argv=None) -> int:
     if args.cmd == "list-actions":
         env = ok("list-actions", {"actions": ACTIONS})
     else:
-        conn = db.connect(getattr(args, "db", None))
+        conn = None
         try:
+            conn = db.connect(getattr(args, "db", None))
             env = HANDLERS[args.cmd](conn, args)
         except mutations.ValidationError as e:
             env = err(args.cmd, "invalid_arguments", str(e))
         except Exception as e:  # noqa: BLE001 - surface as a clean envelope
             env = err(args.cmd, "internal_error", f"{type(e).__name__}: {e}")
         finally:
-            conn.close()
+            if conn is not None:
+                conn.close()
 
     print(json.dumps(env, indent=2 if getattr(args, "pretty", False) else None))
     code = 0 if env["ok"] else EXIT.get(env["error"]["type"], 1)

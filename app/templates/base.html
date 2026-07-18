@@ -36,7 +36,7 @@
   {% set path = request.url.path %}
   <nav class="fixed inset-x-0 bottom-0 border-t border-line bg-surface">
     <div class="mx-auto flex max-w-screen-sm">
-      {% set nav = [('/', 'Inventory'), ('/admin', 'Manage'), ('/import-export', 'Export')] %}
+      {% set nav = [('/', 'Inventory'), ('/history', 'History'), ('/admin', 'Manage'), ('/import-export', 'Data')] %}
       {% for href, label in nav %}
       {% set active = (path == href) if href == '/' else path.startswith(href) %}
       <a href="{{ href }}" aria-current="{{ 'page' if active else 'false' }}"

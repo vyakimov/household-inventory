@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}History{% endblock %}
+{% block content %}
+<header class="mb-4">
+  <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Household</p>
+  <h1 class="font-display text-3xl font-bold tracking-tight">History</h1>
+  <p class="mt-1 text-sm text-muted">Every change, newest first{% if truncated %} (showing the last {{ limit }}){% endif %}.</p>
+</header>
+
+{% for day, events in days %}
+<section class="mb-5">
+  <h2 class="mb-2 ml-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted">{{ day }}</h2>
+  <div class="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
+    {% for e in events %}
+    <div class="flex items-baseline justify-between gap-3 px-4 py-2.5 text-sm">
+      <div class="min-w-0 truncate">
+        <span class="font-semibold">{{ e.item_name }}</span>
+        <span class="text-muted">{{ e.line }}</span>
+      </div>
+      <div class="flex shrink-0 items-baseline gap-2">
+        {% if e.source != 'web' %}
+        <span class="rounded bg-denim-tint px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-denim">{{ e.source }}</span>
+        {% endif %}
+        <span class="text-xs tabular-nums text-muted">{{ e.local_time[11:16] }}</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<div class="rounded-2xl border border-dashed border-line py-12 text-center text-muted">
+  No changes recorded yet.
+</div>
+{% endfor %}
+{% endblock %}

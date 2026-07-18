@@ -23,6 +23,10 @@
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <!-- Slow the respawn loop when the port is taken or the venv is mid-rebuild,
+         so a stuck service doesn't grow logs unbounded (learned the hard way). -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
 
     <key>StandardOutPath</key>
     <string>/Users/vy/Documents/Development/inventory-web/logs/inventory.out.log</string>

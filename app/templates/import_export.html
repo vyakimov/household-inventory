@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Export{% endblock %}
+{% block title %}Import & export{% endblock %}
 {% block content %}
 <header class="mb-4">
   <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Household</p>
-  <h1 class="font-display text-3xl font-bold tracking-tight">Export</h1>
+  <h1 class="font-display text-3xl font-bold tracking-tight">Import &amp; export</h1>
   <p class="mt-1 text-sm text-muted">{{ count }} items in the pantry.</p>
 </header>
 
@@ -24,8 +24,24 @@
   </a>
 </div>
 
+<form hx-post="/import/csv" hx-target="#import-result" hx-swap="innerHTML"
+      hx-encoding="multipart/form-data"
+      class="mt-6 rounded-2xl border border-line bg-surface p-4">
+  <div class="font-semibold">Import CSV</div>
+  <p class="mt-0.5 text-sm text-muted">
+    Same columns as the export. Matches items by name: updates existing, creates new.
+    A backup snapshot is taken first; a bad row aborts the whole import.
+  </p>
+  <div class="mt-3 flex items-center gap-2">
+    <input type="file" name="file" accept=".csv,text/csv" required
+           class="min-w-0 flex-1 text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-basil-tint file:px-3 file:py-2 file:text-sm file:font-semibold file:text-basil">
+    <button class="shrink-0 rounded-xl bg-basil px-4 py-2 font-semibold text-white">Import</button>
+  </div>
+  <div id="import-result" class="mt-3 empty:hidden"></div>
+</form>
+
 <p class="mt-6 text-xs leading-relaxed text-muted">
-  Importing from Notion or CSV runs from the command line
+  The one-time Notion import runs from the command line
   (<code class="rounded bg-line/60 px-1">uv run python scripts/import_from_notion.py</code>).
   Daily backups are handled automatically once the launchd job is installed.
 </p>

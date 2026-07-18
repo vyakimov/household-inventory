@@ -36,6 +36,35 @@ arbitrary Python**. Whitelist *this script* for remote/agent execution instead o
 It can be symlinked anywhere (the symlink resolves back to the project), e.g. for an
 allowlist entry or an SSH forced command.
 
+## Reboot behavior
+
+These are **LaunchAgents**: they start at *login*, not boot. On this Mac auto-login
+is enabled for `vy` and FileVault is off, so a reboot goes boot → auto-login →
+agents load → server up, unattended. If auto-login is ever disabled (or FileVault
+turned on), the server won't start until someone logs in — the fix then is a
+system LaunchDaemon in `/Library/LaunchDaemons` (same plist plus a `UserName` key,
+installed with sudo).
+
+## Troubleshooting
+
+```bash
+launchctl list | grep vy.inventory            # "-  1  label" = not running, last exit 1
+launchctl print gui/$(id -u)/com.vy.inventory # detailed state, last exit reason
+```
+
+- **Crash loop / "address already in use" in `inventory.err.log`**: something else
+  holds port 8502 (e.g. a manually started `uv run uvicorn`). Find and kill it —
+  `lsof -nP -iTCP:8502 -sTCP:LISTEN` — and launchd will bring the service back.
+  Never start the server by hand on 8502 while the agent is loaded.
+- **`last exit code = 78: EX_CONFIG` + `penalty box`** in `launchctl print`: launchd
+  failed to spawn the binary (typically the venv was being rebuilt at the time) and
+  benched the job. Reset with:
+  `launchctl bootout gui/$(id -u)/<label>` then
+  `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/<label>.plist`.
+- **Every request 500s after `uv sync`**: rebuilding `.venv` pulls site-packages out
+  from under the running process. Restart it:
+  `launchctl kickstart -k gui/$(id -u)/com.vy.inventory`.
+
 ## Notes
 - Edit the absolute paths in the plists / wrapper if the repo lives elsewhere.
 - The app and CLI use `inventory.db` in the project dir; override with `INVENTORY_DB`.
