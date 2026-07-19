@@ -56,6 +56,12 @@ NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
 NOTION_VERSION = os.environ.get("NOTION_VERSION", "2022-06-28")
 
+# Semantic search (read again by app.embeddings at call time so tests and the
+# kill switch can change the environment without reloading this module).
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+EMBED_MODEL = os.environ.get("INVENTORY_EMBED_MODEL", "nvidia/nemotron-3-embed-1b:free")
+EMBED_URL = os.environ.get("INVENTORY_EMBED_URL", "https://openrouter.ai/api/v1/embeddings")
+
 # Server
 HOST = os.environ.get("INVENTORY_HOST", "0.0.0.0")
 PORT = int(os.environ.get("INVENTORY_PORT", "8502"))

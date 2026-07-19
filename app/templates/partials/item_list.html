@@ -1,3 +1,6 @@
+{% if semantic %}
+<p class="mb-3 ml-1 text-xs font-medium text-amber">Closest matches for “{{ q }}”</p>
+{% endif %}
 {% for category, items in groups %}
 <section class="mb-6">
   <h2 class="mb-2 ml-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted">{{ category }}</h2>

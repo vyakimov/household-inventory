@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.background import BackgroundTask
 
-from . import db, exporters, mutations, queries, settings
+from . import db, embeddings, exporters, mutations, queries, settings
 
 app = FastAPI(title="Household Inventory")
 app.mount("/static", StaticFiles(directory=settings.BASE_DIR / "app" / "static"), name="static")
@@ -31,7 +31,7 @@ def get_conn():
 
 def _inventory_ctx(request, conn, tab, q):
     tab = tab if tab in TABS else "low"
-    items = queries.list_items(conn, tab, q)
+    items, semantic = _search_items(conn, tab, q)
     return {
         "request": request,
         "tab": tab,
@@ -41,7 +41,33 @@ def _inventory_ctx(request, conn, tab, q):
         "buy_count": queries.count_needs_buy(conn),
         "categories": queries.categories(conn),
         "units": queries.units(conn),
+        "semantic": semantic,
     }
+
+
+def _search_items(conn, tab: str, q: str | None) -> tuple[list[dict], bool]:
+    """Use semantic matches only after the normal name/alias search misses."""
+    items = queries.list_items(conn, tab, q)
+    if items or not q or not embeddings.enabled():
+        return items, False
+    matches = embeddings.semantic_search(conn, q)
+    if not matches:
+        return [], False
+    ids = [match["id"] for match in matches]
+    placeholders = ", ".join("?" for _ in ids)
+    rows = {
+        row["id"]: dict(row)
+        for row in conn.execute(f"SELECT * FROM v_items WHERE id IN ({placeholders})", ids)
+    }
+    def in_tab(item: dict) -> bool:
+        return (
+            tab == "all"
+            or (tab == "low" and item["is_low"])
+            or (tab == "necessities" and item["necessity"])
+            or (tab == "needs-buy" and item["needs_buy"])
+        )
+    items = [rows[item_id] for item_id in ids if item_id in rows and in_tab(rows[item_id])]
+    return items, bool(items)
 
 
 def _get_or_404(conn, item_id: int) -> dict:
@@ -75,9 +101,11 @@ def partial_inventory(request: Request, tab: str = "low", q: str | None = None, 
 
 @app.get("/partials/list", response_class=HTMLResponse)
 def partial_list(request: Request, tab: str = "all", q: str | None = None, conn=Depends(get_conn)):
-    items = queries.list_items(conn, tab if tab in TABS else "all", q)
+    tab = tab if tab in TABS else "all"
+    items, semantic = _search_items(conn, tab, q)
     return templates.TemplateResponse(request, "partials/item_list.html",
-                                      {"request": request, "groups": queries.group_by_category(items)})
+                                      {"request": request, "q": q or "", "semantic": semantic,
+                                       "groups": queries.group_by_category(items)})
 
 
 @app.get("/partials/item/{item_id}", response_class=HTMLResponse)

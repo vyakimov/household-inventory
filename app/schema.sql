@@ -30,6 +30,15 @@ CREATE TABLE IF NOT EXISTS items (
 CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
 CREATE INDEX IF NOT EXISTS idx_items_item ON items(item);
 
+-- Derived semantic-search cache. It is maintained outside mutations/events.
+CREATE TABLE IF NOT EXISTS item_embeddings (
+    item_id    INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
+    model      TEXT NOT NULL,
+    text_hash  TEXT NOT NULL,
+    vector     BLOB NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Computed flags over every row; the filter tabs are WHERE clauses on this view.
 CREATE VIEW IF NOT EXISTS v_items AS
 SELECT

@@ -1,3 +1,6 @@
+import pytest
+
+
 def _id(conn, name):
     return conn.execute("SELECT id FROM items WHERE item = ?", (name,)).fetchone()["id"]
 
@@ -22,6 +25,41 @@ def test_search_matches_name(client):
 def test_search_matches_alias(client):
     r = client.get("/partials/list", params={"tab": "all", "q": "kibble"})
     assert "Dry cat food" in r.text
+
+
+def test_search_semantic_fallback(client, conn, monkeypatch):
+    from app import embeddings
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    conn.execute(
+        "INSERT INTO items(item, category, unit) VALUES ('Bathroom bleach', 'cleaning', 'units')"
+    )
+
+    def fake(texts):
+        return [
+            [1.0, 0.0]
+            if any(word in text.lower() for word in ("bathroom", "bleach", "cleaner", "cleaning"))
+            else [0.0, 1.0]
+            for text in texts
+        ]
+
+    monkeypatch.setattr(embeddings, "_request_embeddings", fake)
+    r = client.get("/partials/list", params={"tab": "all", "q": "cleaner for bathroom"})
+    assert "Bathroom bleach" in r.text and "Closest matches" in r.text
+
+
+def test_search_like_hit_skips_semantic_provider(client, monkeypatch):
+    from app import embeddings
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(embeddings, "_request_embeddings", lambda texts: pytest.fail("called"))
+    r = client.get("/partials/list", params={"tab": "all", "q": "Granola"})
+    assert "Granola" in r.text and "Closest matches" not in r.text
+
+
+def test_search_disabled_keeps_empty_result_page(client):
+    r = client.get("/partials/list", params={"tab": "all", "q": "cleaner for bathroom"})
+    assert "Nothing to show here." in r.text and "Closest matches" not in r.text
 
 
 def test_inc_persists(client, conn):

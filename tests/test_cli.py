@@ -3,7 +3,7 @@ import io
 import json
 import sys
 
-from app import cli
+from app import cli, db, embeddings
 
 
 def run(db_path, *args, stdin=None):
@@ -34,6 +34,62 @@ def test_not_found(db_path):
     code, env = run(db_path, "put", "toilet rolls", "1")
     assert code == 2 and env["error"]["type"] == "resource_not_found"
     assert {"id": 3, "item": "Toilet paper"} in env["error"]["details"]["suggestions"]
+
+
+def test_search_merges_like_and_semantic_results(db_path, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    conn = db.connect(db_path)
+    conn.execute(
+        "INSERT INTO items(item, category, unit) VALUES ('Bathroom bleach', 'cleaning', 'units')"
+    )
+    conn.close()
+
+    def fake(texts):
+        return [
+            [1.0, 0.0]
+            if any(word in text.lower() for word in ("bathroom", "bleach", "cleaner", "cleaning"))
+            else [0.0, 1.0]
+            for text in texts
+        ]
+
+    monkeypatch.setattr(embeddings, "_request_embeddings", fake)
+    code, env = run(db_path, "search", "Granola", "--limit", "8")
+    assert code == 0 and env["result"]["items"][0]["source"] == "like"
+    code, env = run(db_path, "search", "--query", "bathroom cleaner")
+    assert code == 0 and env["result"]["items"][0] == {
+        "id": 7, "item": "Bathroom bleach", "category": "cleaning", "quantity": 0.0,
+        "unit": "units", "source": "semantic", "score": 1.0,
+    }
+
+
+def test_search_works_with_semantic_disabled(db_path):
+    code, env = run(db_path, "search", "Granola")
+    assert code == 0 and env["result"]["items"] == [{
+        "id": 5, "item": "Granola", "category": "food", "quantity": 1.0,
+        "unit": "units", "source": "like", "score": None,
+    }]
+
+
+def test_not_found_suggestions_include_semantic_candidate(db_path, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    conn = db.connect(db_path)
+    conn.execute(
+        "INSERT INTO items(item, category, unit) VALUES ('Bathroom bleach', 'cleaning', 'units')"
+    )
+    conn.close()
+    monkeypatch.setattr(
+        embeddings,
+        "_request_embeddings",
+        lambda texts: [
+            [1.0, 0.0]
+            if any(word in text.lower() for word in ("bathroom", "bleach", "cleaner", "cleaning"))
+            else [0.0, 1.0]
+            for text in texts
+        ],
+    )
+    code, env = run(db_path, "get", "bathroom cleaning product")
+    assert code == 2
+    assert {"id": 7, "item": "Bathroom bleach"} in env["error"]["details"]["suggestions"]
 
 
 def test_take_clamped(db_path):
@@ -217,3 +273,4 @@ def test_list_actions(db_path):
     names = [a["name"] for a in env["result"]["actions"]]
     assert "take" in names and "catalog" in names and "batch" in names and "lookups" in names
     assert "category" in names
+    assert "search" in names

@@ -8,7 +8,7 @@ import argparse
 import json
 import sys
 
-from . import db, mutations, queries
+from . import db, embeddings, mutations, queries
 
 SCHEMA_VERSION = 1
 
@@ -58,8 +58,21 @@ def _resolve_or_raise(conn, item_id, term):
                       query=term, candidates=[{"id": m["id"], "item": m["item"]} for m in matches])
     raise OpError("resource_not_found",
                   f"no item matched {term!r}" if term else f"no item with id {item_id}",
-                  query=term, suggestions=queries.suggest(conn, term or ""),
+                  query=term, suggestions=_suggestions(conn, term or ""),
                   hint="run `inv catalog` to resolve semantically, then apply with --id")
+
+
+def _suggestions(conn, term: str) -> list[dict]:
+    """Merge optional semantic hints without ever changing resolver behavior."""
+    suggestions = queries.suggest(conn, term)
+    seen = {row["id"] for row in suggestions}
+    for row in embeddings.semantic_search(conn, term, top_k=5):
+        if row["id"] not in seen:
+            seen.add(row["id"])
+            suggestions.append({"id": row["id"], "item": row["item"]})
+        if len(suggestions) == 5:
+            break
+    return suggestions[:5]
 
 
 def _parse_bool(s) -> bool:
@@ -210,8 +223,34 @@ def cmd_get(conn, args):
 
 
 def cmd_search(conn, args):
-    items = queries.list_items(conn, "all", args.term)
-    return ok("search", {"items": items, "count": len(items)}, query=args.term)
+    query = args.query_option or args.query
+    if not query:
+        return err("search", "invalid_arguments", "query is required")
+    if args.limit <= 0:
+        return err("search", "invalid_arguments", "limit must be > 0")
+    items, seen = [], set()
+    for row in queries.list_items(conn, "all", query):
+        if len(items) == args.limit:
+            break
+        seen.add(row["id"])
+        items.append(_search_row(row, "like", None))
+    if len(items) < args.limit:
+        for match in embeddings.semantic_search(conn, query, top_k=args.limit):
+            if match["id"] in seen:
+                continue
+            row = queries.get_item(conn, match["id"])
+            if row is not None:
+                seen.add(row["id"])
+                items.append(_search_row(row, "semantic", match["score"]))
+            if len(items) == args.limit:
+                break
+    return ok("search", {"items": items, "count": len(items)}, query=query)
+
+
+def _search_row(row: dict, source: str, score: float | None) -> dict:
+    return {key: row[key] for key in ("id", "item", "category", "quantity", "unit")} | {
+        "source": source, "score": score,
+    }
 
 
 def cmd_catalog(conn, args):
@@ -434,7 +473,7 @@ ACTIONS = [
     {"name": "set", "summary": "Set exact quantity", "params": ["item|--item|--id", "qty|--qty", "--request-id", "--dry-run"]},
     {"name": "on-the-way", "summary": "Set the on-the-way flag", "params": ["item|--item|--id", "true|false|--value"]},
     {"name": "get", "summary": "Show one item's current state", "params": ["item|--item|--id"]},
-    {"name": "search", "summary": "Substring search over names and aliases", "params": ["term"]},
+    {"name": "search", "summary": "Name/alias search with semantic fallback", "params": ["query|--query", "--limit"]},
     {"name": "catalog", "summary": "Dump all items+aliases for semantic resolution", "params": []},
     {"name": "list", "summary": "List items by filter tab", "params": ["--tab low|necessities|needs-buy|all", "--q"]},
     {"name": "lookups", "summary": "List valid categories and units", "params": []},
@@ -489,7 +528,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--id", type=int)
 
     sp = sub.add_parser("search", parents=[g])
-    sp.add_argument("term")
+    sp.add_argument("query", nargs="?")
+    sp.add_argument("--query", dest="query_option")
+    sp.add_argument("--limit", type=int, default=8)
 
     sub.add_parser("catalog", parents=[g])
 

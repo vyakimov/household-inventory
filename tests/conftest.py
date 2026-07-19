@@ -2,6 +2,14 @@ import pytest
 
 from app import db
 
+
+@pytest.fixture(autouse=True)
+def no_real_openrouter_key(monkeypatch):
+    """Offline tests must opt into semantic search explicitly."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("INVENTORY_SEMANTIC", raising=False)
+    monkeypatch.delenv("INVENTORY_EMBED_MODEL", raising=False)
+
 CATEGORIES = ["food", "cleaning", "cats", "paper goods"]
 UNITS = ["units", "bags", "cans", "rolls"]
 

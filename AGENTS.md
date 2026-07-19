@@ -30,6 +30,7 @@ app/
   schema.sql     items, categories, units, events, and the v_items VIEW
   queries.py     read-only queries + resolve()/catalog()/split_aliases()
   mutations.py   all writes; each logs an event; ValidationError on bad input
+  embeddings.py  lazy OpenRouter embedding cache + semantic ranking
   exporters.py   CSV import/export + SQLite backup
   cli.py         `inv` — JSON-envelope CLI for agents
   main.py        FastAPI routes + HTMX partials; Jinja templates/ + static/
@@ -50,6 +51,8 @@ same `queries`/`mutations`, so behavior stays identical between web and CLI.
   each call; the CLI wraps single ops and rolls back on `--dry-run`.
 - **Every mutation writes an `events` row** (op, delta, before/after, source, request_id).
   Keep this when adding mutations.
+- **Embedding cache is derived data** — never write it through `mutations.py` or add
+  `events` rows; callers always degrade to LIKE/fuzzy behavior when unavailable.
 - **`v_items` is the source of truth for status.** It computes `is_low` and `needs_buy`
   over all rows; the filter tabs (`low`/`necessities`/`needs-buy`/`all`) are just WHERE
   clauses on it. Don't recompute low-stock logic elsewhere.
@@ -82,6 +85,8 @@ Built to the `llm-cli-skill` conventions (github.com/vyakimov/llm-cli-skill):
 - `inv lookups` returns valid categories and units for safe `new`/`edit` operations.
 - `inv list --tab needs-buy` lists low-stock necessities that are not already marked
   `on_the_way`.
+- `inv search <query>` combines name/alias matches with optional semantic suggestions;
+  semantic matches are never auto-applied by the resolver.
 - **Idempotent** relative ops via `--request-id` (deduped through `events`); **`--dry-run`**
   on all mutations; **`--learn-alias`** persists a resolved alias.
 - argparse gotcha: global flags (`--db`, `--pretty`) use `default=argparse.SUPPRESS` and

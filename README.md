@@ -50,6 +50,12 @@ deploy/        launchd plists + notes
 
 Python 3.11+, FastAPI, Uvicorn, Jinja2, HTMX, Tailwind, stdlib `sqlite3` (raw SQL — no SQLAlchemy), pytest + httpx, ruff.
 
+Semantic search augments the normal name-and-alias search only when it finds no lexical
+matches, so requests such as “something to clean the bathroom” can still find relevant
+items. Set `OPENROUTER_API_KEY` to enable it; `INVENTORY_EMBED_MODEL` optionally selects
+the embedding model (default `nvidia/nemotron-3-embed-1b:free`), and `INVENTORY_EMBED_URL`
+can override the OpenRouter-compatible endpoint.
+
 ## Data model
 
 - `items` — canonical item, aliases, category (FK), quantity (REAL, ≥0), unit (FK), `step`, `low_stock_threshold`, `necessity`, `on_the_way`, `shopping_item_name`, `notes`, timestamps.
