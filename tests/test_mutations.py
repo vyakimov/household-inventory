@@ -58,6 +58,11 @@ def test_add_alias_dedupe_case_insensitive(conn):
     assert aliases == ["WCF"]
 
 
+def test_add_alias_rejects_separators(conn):
+    with pytest.raises(mutations.ValidationError):
+        mutations.add_alias(conn, _id(conn, "Granola"), "muesli, kibble")
+
+
 def test_alias_split_handles_semicolon_and_comma(conn):
     # Toilet paper fixture uses "loo roll; bog roll"
     aliases = queries.split_aliases(queries.get_item(conn, _id(conn, "Toilet paper"))["aliases"])

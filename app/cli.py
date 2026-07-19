@@ -166,8 +166,13 @@ def _run_mutation(conn, action, args, apply_fn):
     try:
         result = apply_fn(conn, item)
         if getattr(args, "learn_alias", None):
-            mutations.add_alias(conn, item["id"], args.learn_alias, source=args.source)
-            result["learned_alias"] = args.learn_alias
+            try:
+                mutations.add_alias(conn, item["id"], args.learn_alias, source=args.source)
+                result["learned_alias"] = args.learn_alias
+            except mutations.ValidationError as e:
+                # Learning is best-effort: the primary mutation still commits.
+                warnings.append(f"alias not learned: {e}")
+                print(warnings[-1], file=sys.stderr)
         conn.execute("ROLLBACK" if args.dry_run else "COMMIT")
     except Exception:
         conn.execute("ROLLBACK")

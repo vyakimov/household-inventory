@@ -88,7 +88,8 @@ Built to the `llm-cli-skill` conventions (github.com/vyakimov/llm-cli-skill):
 - `inv search <query>` combines name/alias matches with optional semantic suggestions;
   semantic matches are never auto-applied by the resolver.
 - **Idempotent** relative ops via `--request-id` (deduped through `events`); **`--dry-run`**
-  on all mutations; **`--learn-alias`** persists a resolved alias.
+  on all mutations; **`--learn-alias`** persists a resolved alias — best-effort: a
+  colliding alias warns in `meta.warnings` instead of failing the mutation.
 - argparse gotcha: global flags (`--db`, `--pretty`) use `default=argparse.SUPPRESS` and
   are read via `getattr` so the subparser can't clobber a value parsed before the
   subcommand. Keep that pattern if you add global flags.

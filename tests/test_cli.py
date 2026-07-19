@@ -159,6 +159,32 @@ def test_alias_collision_is_rejected(db_path):
     assert code == 4 and env["error"]["type"] == "invalid_arguments"
 
 
+def test_alias_collision_with_item_name_is_rejected(db_path):
+    code, env = run(db_path, "alias", "add", "Granola", "Toilet Paper")
+    assert code == 4 and env["error"]["type"] == "invalid_arguments"
+
+
+def test_alias_with_separator_is_rejected(db_path):
+    code, env = run(db_path, "alias", "add", "Granola", "muesli, kibble")
+    assert code == 4 and env["error"]["type"] == "invalid_arguments"
+
+
+def test_alias_own_name_and_duplicate_are_noops(db_path):
+    code, env = run(db_path, "alias", "add", "Granola", "granola")
+    assert code == 0 and env["result"]["aliases"] == []
+    code, env = run(db_path, "alias", "add", "Dry cat food", "KIBBLE")
+    assert code == 0 and env["result"]["aliases"] == ["kibble"]
+
+
+def test_learn_alias_collision_is_best_effort(db_path):
+    code, env = run(db_path, "put", "Toilet paper", "1", "--learn-alias", "kibble")
+    assert code == 0 and env["ok"] and env["result"]["after"] == 5
+    assert "learned_alias" not in env["result"]
+    assert any("kibble" in w for w in env["meta"]["warnings"])
+    _, env = run(db_path, "get", "kibble")
+    assert env["result"]["item"] == "Dry cat food"
+
+
 def test_needs_buy_tab(db_path):
     code, env = run(db_path, "list", "--tab", "needs-buy")
     assert code == 0 and env["ok"]

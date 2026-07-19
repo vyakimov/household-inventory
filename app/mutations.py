@@ -179,6 +179,10 @@ def add_alias(conn, item_id, alias, *, source="cli") -> dict:
     before = _row(conn, item_id)
     existing = queries.split_aliases(before["aliases"])
     alias = alias.strip()
+    if queries.ALIAS_SEP.search(alias):
+        # A separator would silently split into several aliases on the next read,
+        # bypassing the cross-item collision check below.
+        raise ValidationError(f"alias '{alias}' must not contain ',' or ';'")
     if not alias or alias.casefold() == before["item"].casefold():
         return before
     if alias.casefold() in (a.casefold() for a in existing):
