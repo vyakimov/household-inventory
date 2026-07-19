@@ -228,6 +228,38 @@ def cmd_lookups(conn, args):
     return ok("lookups", {"categories": queries.categories(conn), "units": queries.units(conn)})
 
 
+def cmd_category(conn, args):
+    if args.category_cmd == "list":
+        rows = conn.execute(
+            "SELECT name, sort_order FROM categories ORDER BY sort_order, name"
+        ).fetchall()
+        return ok("category", {"categories": [dict(row) for row in rows], "count": len(rows)})
+    if not args.name:
+        return err("category", "invalid_arguments", "category name is required")
+    conn.execute("BEGIN")
+    try:
+        if args.category_cmd == "add":
+            result = mutations.add_category(
+                conn, args.name, args.sort_order, source=args.source
+            )
+        else:
+            result = mutations.delete_category(conn, args.name, source=args.source)
+        conn.execute("ROLLBACK" if args.dry_run else "COMMIT")
+    except mutations.ValidationError as e:
+        conn.execute("ROLLBACK")
+        return err(
+            "category",
+            "conflict" if "is used by" in str(e) else "invalid_arguments",
+            str(e),
+        )
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return ok(
+        "category", result, source=args.source, dry_run=bool(args.dry_run)
+    )
+
+
 def cmd_log(conn, args):
     where, params = "", []
     item_arg = _item_arg(args)
@@ -356,6 +388,11 @@ def _batch_op(conn, op: dict, source: str) -> dict:
         if "value" not in op:
             raise OpError("invalid_arguments", "on_the_way requires value", op=op)
         return mutations.set_on_the_way(conn, item["id"], _parse_bool(op["value"]), source=source)
+    if kind == "categorize":
+        category = (op.get("category") or "").strip()
+        if not category:
+            raise OpError("invalid_arguments", "categorize requires category", op=op)
+        return mutations.update_item(conn, item["id"], {"category": category}, source=source)
     raise OpError("invalid_arguments", f"unknown op {kind!r}", op=op)
 
 
@@ -396,6 +433,7 @@ ACTIONS = [
     {"name": "catalog", "summary": "Dump all items+aliases for semantic resolution", "params": []},
     {"name": "list", "summary": "List items by filter tab", "params": ["--tab low|necessities|needs-buy|all", "--q"]},
     {"name": "lookups", "summary": "List valid categories and units", "params": []},
+    {"name": "category", "summary": "Add, remove, or list category lookups", "params": ["add|rm|list", "name", "--sort-order", "--dry-run"]},
     {"name": "new", "summary": "Create an item", "params": ["item", "--category", "--unit", "--qty", "--threshold", "--necessity", "--step", "--alias"]},
     {"name": "edit", "summary": "Edit item fields", "params": ["item|--item|--id", "--rename", "--category", "--unit", "--qty", "--threshold", "--necessity", "--aliases", "--step"]},
     {"name": "delete", "summary": "Delete an item", "params": ["item|--item|--id", "--dry-run"]},
@@ -455,6 +493,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--q")
 
     sub.add_parser("lookups", parents=[g])
+
+    sp = sub.add_parser("category", parents=[g])
+    sp.add_argument("category_cmd", choices=["add", "rm", "list"])
+    sp.add_argument("name", nargs="?")
+    sp.add_argument("--sort-order", type=int)
+    sp.add_argument("--source", default="cli")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true")
 
     sp = sub.add_parser("new", parents=[g])
     sp.add_argument("item")
@@ -521,7 +566,7 @@ def build_parser() -> argparse.ArgumentParser:
 HANDLERS = {
     "take": cmd_take, "put": cmd_put, "set": cmd_set, "on-the-way": cmd_on_the_way,
     "get": cmd_get, "search": cmd_search, "catalog": cmd_catalog, "list": cmd_list,
-    "lookups": cmd_lookups,
+    "lookups": cmd_lookups, "category": cmd_category,
     "new": cmd_new, "edit": cmd_edit, "delete": cmd_delete, "alias": cmd_alias,
     "batch": cmd_batch, "log": cmd_log,
 }

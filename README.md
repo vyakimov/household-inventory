@@ -53,7 +53,7 @@ Python 3.11+, FastAPI, Uvicorn, Jinja2, HTMX, Tailwind, stdlib `sqlite3` (raw SQ
 ## Data model
 
 - `items` — canonical item, aliases, category (FK), quantity (REAL, ≥0), unit (FK), `step`, `low_stock_threshold`, `necessity`, `on_the_way`, `shopping_item_name`, `notes`, timestamps.
-- `categories` / `units` — lookup tables, FK-enforced, seeded from the live Notion enums (categories: food, baby, cleaning, paper goods, toiletries, cats, wellness; units: packs, cans, cartons, kg, jars, bottles, blocks, boxes, rolls, bags, tubes, containers, buckets, pouches, units, mixed, unclear, other, g).
+- `categories` / `units` — FK-enforced lookup tables. Categories use a household-oriented taxonomy and can be managed through `inv category`; units are seeded from the live Notion enums (packs, cans, cartons, kg, jars, bottles, blocks, boxes, rolls, bags, tubes, containers, buckets, pouches, units, mixed, unclear, other, g).
 - `v_items` — view over all rows computing `is_low` and `needs_buy`; the filter tabs are `WHERE` clauses on it.
 - `events` — append-only audit log written by both web and CLI mutations (op, delta, before/after, source, note, timestamp, nullable unique `request_id` for CLI idempotency).
 
@@ -67,7 +67,7 @@ Import/export: `POST /import/csv`, `GET /export/csv`, `GET /backup/sqlite`.
 
 Shares `mutations.py`/`queries.py` with the web app; same SQLite file (WAL handles concurrent web+CLI access). The CLI is the safe structured surface — the agent never writes SQL. **Built to the `llm-cli-skill` conventions** ([github.com/vyakimov/llm-cli-skill](https://github.com/vyakimov/llm-cli-skill)); apply that skill when implementing and reviewing it.
 
-Commands: `inv take|put|set|on-the-way|get|search|new|edit|delete|batch|catalog|lookups|alias|log|list|list-actions`
+Commands: `inv take|put|set|on-the-way|get|search|new|edit|delete|batch|catalog|lookups|category|alias|log|list|list-actions`
 
 **Output contract (per skill):**
 - **stdout is JSON only** — one envelope per call, no banners; diagnostics/progress/warnings go to **stderr**; `--pretty` indents.
@@ -78,9 +78,9 @@ Commands: `inv take|put|set|on-the-way|get|search|new|edit|delete|batch|catalog|
 
 **Resolution tiers:** exact canonical → exact alias → normalized → fuzzy (confidence threshold). Unique hit proceeds; multiple above threshold → `ambiguous_match` (candidates in `error.details`); none → `resource_not_found` with suggestions that include IDs. `--id` bypasses resolution, and `--item` is accepted for item-bearing commands so agents can avoid positional ambiguity.
 
-**Lookup/list helpers:** `inv lookups` returns valid categories + units for item creation/editing. `inv list --tab needs-buy` lists low-stock necessities that are not already marked on the way.
+**Lookup/list helpers:** `inv lookups` returns valid categories + units for item creation/editing. `inv category add|rm|list` manages the category lookup table while refusing to delete in-use values; adding an existing category with `--sort-order` reorders it. `inv list --tab needs-buy` lists low-stock necessities that are not already marked on the way.
 
-**Atomic batch:** `inv batch` applies multiple ops from stdin JSON in one transaction; any failure rolls back the whole batch. Each op is `{"op": "take|put|adjust|set|on_the_way", "item": …|"id": …, "qty": …}` (`"value"` for `on_the_way`, optional `"note"`); `qty`/`value` are required — a missing key is `invalid_arguments`, never a silent default.
+**Atomic batch:** `inv batch` applies multiple ops from stdin JSON in one transaction; any failure rolls back the whole batch. Quantity ops use `{"op": "take|put|adjust|set", "item": …|"id": …, "qty": …}`; `on_the_way` uses `"value"`; and metadata migrations can use `{"op": "categorize", "item": …|"id": …, "category": …}`. Required keys never silently default.
 
 **Semantic fallback** (e.g. "TP" → "toilet paper" when not a registered alias): on `resource_not_found` the agent runs `inv catalog` (lean JSON dump of all items + aliases), reasons, **confirms with the user**, applies by `--id`, and optionally `--learn-alias <term>` to persist the alias atomically (logged to `events`, reversible via `inv alias rm`).
 

@@ -111,6 +111,32 @@ def test_lookups(db_path):
     assert "rolls" in env["result"]["units"]
 
 
+def test_category_add_and_dry_run(db_path):
+    code, env = run(db_path, "category", "add", "spices", "--dry-run")
+    assert code == 0 and env["ok"] and env["result"]["created"] is True
+    _, env = run(db_path, "lookups")
+    assert "spices" not in env["result"]["categories"]
+
+    code, env = run(db_path, "category", "add", "spices")
+    assert code == 0 and env["ok"] and env["result"]["created"] is True
+    _, env = run(db_path, "lookups")
+    assert "spices" in env["result"]["categories"]
+
+
+def test_category_add_can_reorder_existing_category(db_path):
+    code, env = run(db_path, "category", "add", "food", "--sort-order", "99")
+    assert code == 0 and env["result"]["created"] is False
+    assert env["result"]["updated"] is True
+    _, env = run(db_path, "category", "list")
+    food = next(row for row in env["result"]["categories"] if row["name"] == "food")
+    assert food["sort_order"] == 99
+
+
+def test_category_rm_in_use_is_conflict(db_path):
+    code, env = run(db_path, "category", "rm", "food")
+    assert code == 5 and env["error"]["type"] == "conflict"
+
+
 def test_batch_atomic_rollback(db_path):
     ops = '[{"op":"take","item":"Granola","qty":1},{"op":"put","item":"cat food","qty":1}]'
     code, env = run(db_path, "batch", stdin=ops)
@@ -144,6 +170,19 @@ def test_batch_on_the_way_requires_value(db_path):
     assert env["result"]["on_the_way"] == 1  # flag untouched
 
 
+def test_batch_categorize_and_dry_run(db_path):
+    ops = '[{"op":"categorize","item":"Granola","category":"cleaning"}]'
+    code, env = run(db_path, "batch", "--dry-run", stdin=ops)
+    assert code == 0 and env["ok"]
+    _, env = run(db_path, "get", "Granola")
+    assert env["result"]["category"] == "food"
+
+    code, env = run(db_path, "batch", stdin=ops)
+    assert code == 0 and env["ok"]
+    _, env = run(db_path, "get", "Granola")
+    assert env["result"]["category"] == "cleaning"
+
+
 def test_rename_conflict(db_path):
     code, env = run(db_path, "edit", "Granola", "--rename", "Salt")
     assert code == 5 and env["error"]["type"] == "conflict"
@@ -159,3 +198,4 @@ def test_list_actions(db_path):
     code, env = run(db_path, "list-actions")
     names = [a["name"] for a in env["result"]["actions"]]
     assert "take" in names and "catalog" in names and "batch" in names and "lookups" in names
+    assert "category" in names

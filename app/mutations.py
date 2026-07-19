@@ -60,6 +60,75 @@ def _validate_unit(conn, name):
         raise ValidationError(f"unknown unit '{name}'")
 
 
+def add_category(conn, name, sort_order=None, *, source="cli") -> dict:
+    """Register a category lookup value, returning the existing row if present."""
+    name = (name or "").strip()
+    if not name:
+        raise ValidationError("category name is required")
+    existing = conn.execute(
+        "SELECT name, sort_order FROM categories WHERE name = ?", (name,)
+    ).fetchone()
+    if existing:
+        if sort_order is None or int(sort_order) == existing["sort_order"]:
+            return {**dict(existing), "created": False, "updated": False}
+        sort_order = int(sort_order)
+        conn.execute(
+            "UPDATE categories SET sort_order = ? WHERE name = ?",
+            (sort_order, name),
+        )
+        _log(
+            conn,
+            item_id=None,
+            item_name=name,
+            op="category_reorder",
+            source=source,
+            note=f"sort_order={sort_order}",
+        )
+        return {"name": name, "sort_order": sort_order, "created": False, "updated": True}
+    if sort_order is None:
+        sort_order = conn.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM categories"
+        ).fetchone()[0]
+    sort_order = int(sort_order)
+    conn.execute(
+        "INSERT INTO categories(name, sort_order) VALUES (?, ?)",
+        (name, sort_order),
+    )
+    _log(
+        conn,
+        item_id=None,
+        item_name=name,
+        op="category_add",
+        source=source,
+        note=f"sort_order={sort_order}",
+    )
+    return {"name": name, "sort_order": sort_order, "created": True, "updated": False}
+
+
+def delete_category(conn, name, *, source="cli") -> dict:
+    """Delete an unused category lookup value."""
+    name = (name or "").strip()
+    row = conn.execute(
+        "SELECT name, sort_order FROM categories WHERE name = ?", (name,)
+    ).fetchone()
+    if row is None:
+        raise ValidationError(f"unknown category '{name}'")
+    used = conn.execute(
+        "SELECT COUNT(*) FROM items WHERE category = ?", (name,)
+    ).fetchone()[0]
+    if used:
+        raise ValidationError(f"category '{name}' is used by {used} item(s)")
+    conn.execute("DELETE FROM categories WHERE name = ?", (name,))
+    _log(
+        conn,
+        item_id=None,
+        item_name=name,
+        op="category_delete",
+        source=source,
+    )
+    return {"name": name, "sort_order": row["sort_order"], "deleted": True}
+
+
 def adjust_quantity(conn, item_id, delta, *, op="adjust", source="cli",
                     note="", request_id=None) -> dict:
     """Add `delta` (signed) to quantity, clamped at 0."""

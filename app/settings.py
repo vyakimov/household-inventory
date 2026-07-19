@@ -19,7 +19,28 @@ DB_PATH = Path(os.environ.get("INVENTORY_DB", str(BASE_DIR / "inventory.db")))
 # Canonical option sets mirrored from the Notion "Household Inventory Items" database.
 # Seeded into the categories/units lookup tables; the importer adds any extras it finds.
 CATEGORIES = [
-    "food", "baby", "cleaning", "paper goods", "toiletries", "cats", "wellness",
+    "pantry staples",
+    "canned & jarred",
+    "sauces & condiments",
+    "herbs & spices",
+    "baking & sweeteners",
+    "oils & cooking liquids",
+    "tea & coffee",
+    "snacks & breakfast",
+    "nuts & seeds",
+    "beverages",
+    "alcohol",
+    "kitchen supplies",
+    "waste bags",
+    "household paper",
+    "dishwashing",
+    "laundry",
+    "cleaning",
+    "toiletries",
+    "baby",
+    "cats",
+    "wellness",
+    "uncategorized",
 ]
 UNITS = [
     "packs", "cans", "cartons", "kg", "jars", "bottles", "blocks", "boxes", "rolls",
