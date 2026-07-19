@@ -393,6 +393,11 @@ def _batch_op(conn, op: dict, source: str) -> dict:
         if not category:
             raise OpError("invalid_arguments", "categorize requires category", op=op)
         return mutations.update_item(conn, item["id"], {"category": category}, source=source)
+    if kind == "alias_add":
+        alias = (op.get("alias") or "").strip()
+        if not alias:
+            raise OpError("invalid_arguments", "alias_add requires alias", op=op)
+        return mutations.add_alias(conn, item["id"], alias, source=source)
     raise OpError("invalid_arguments", f"unknown op {kind!r}", op=op)
 
 

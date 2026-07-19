@@ -80,7 +80,7 @@ Commands: `inv take|put|set|on-the-way|get|search|new|edit|delete|batch|catalog|
 
 **Lookup/list helpers:** `inv lookups` returns valid categories + units for item creation/editing. `inv category add|rm|list` manages the category lookup table while refusing to delete in-use values; adding an existing category with `--sort-order` reorders it. `inv list --tab needs-buy` lists low-stock necessities that are not already marked on the way.
 
-**Atomic batch:** `inv batch` applies multiple ops from stdin JSON in one transaction; any failure rolls back the whole batch. Quantity ops use `{"op": "take|put|adjust|set", "item": …|"id": …, "qty": …}`; `on_the_way` uses `"value"`; and metadata migrations can use `{"op": "categorize", "item": …|"id": …, "category": …}`. Required keys never silently default.
+**Atomic batch:** `inv batch` applies multiple ops from stdin JSON in one transaction; any failure rolls back the whole batch. Quantity ops use `{"op": "take|put|adjust|set", "item": …|"id": …, "qty": …}`; `on_the_way` uses `"value"`; and metadata migrations can use `{"op": "categorize", "item": …|"id": …, "category": …}` or `{"op": "alias_add", "item": …|"id": …, "alias": …}`. Required keys never silently default. Alias additions reject names already owned by another item.
 
 **Semantic fallback** (e.g. "TP" → "toilet paper" when not a registered alias): on `resource_not_found` the agent runs `inv catalog` (lean JSON dump of all items + aliases), reasons, **confirms with the user**, applies by `--id`, and optionally `--learn-alias <term>` to persist the alias atomically (logged to `events`, reversible via `inv alias rm`).
 

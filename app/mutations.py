@@ -179,14 +179,23 @@ def add_alias(conn, item_id, alias, *, source="cli") -> dict:
     before = _row(conn, item_id)
     existing = queries.split_aliases(before["aliases"])
     alias = alias.strip()
-    if alias and alias.lower() not in (a.lower() for a in existing):
-        existing.append(alias)
-        conn.execute(
-            "UPDATE items SET aliases = ?, updated_at = datetime('now') WHERE id = ?",
-            (", ".join(existing), item_id),
-        )
-        _log(conn, item_id=item_id, item_name=before["item"], op="alias_add",
-             source=source, note=f"+alias '{alias}'")
+    if not alias or alias.casefold() == before["item"].casefold():
+        return before
+    if alias.casefold() in (a.casefold() for a in existing):
+        return before
+    for row in conn.execute("SELECT id, item, aliases FROM items WHERE id != ?", (item_id,)):
+        labels = [row["item"], *queries.split_aliases(row["aliases"])]
+        if alias.casefold() in (label.casefold() for label in labels):
+            raise ValidationError(
+                f"alias '{alias}' already identifies item '{row['item']}'"
+            )
+    existing.append(alias)
+    conn.execute(
+        "UPDATE items SET aliases = ?, updated_at = datetime('now') WHERE id = ?",
+        (", ".join(existing), item_id),
+    )
+    _log(conn, item_id=item_id, item_name=before["item"], op="alias_add",
+         source=source, note=f"+alias '{alias}'")
     return _row(conn, item_id)
 
 

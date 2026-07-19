@@ -98,6 +98,11 @@ def test_alias_id_with_positional_value(db_path):
     assert code == 0 and env["ok"] and "TP" in env["result"]["aliases"]
 
 
+def test_alias_collision_is_rejected(db_path):
+    code, env = run(db_path, "alias", "add", "Wet cat food", "kibble")
+    assert code == 4 and env["error"]["type"] == "invalid_arguments"
+
+
 def test_needs_buy_tab(db_path):
     code, env = run(db_path, "list", "--tab", "needs-buy")
     assert code == 0 and env["ok"]
@@ -181,6 +186,19 @@ def test_batch_categorize_and_dry_run(db_path):
     assert code == 0 and env["ok"]
     _, env = run(db_path, "get", "Granola")
     assert env["result"]["category"] == "cleaning"
+
+
+def test_batch_alias_add_and_dry_run(db_path):
+    ops = '[{"op":"alias_add","item":"Granola","alias":"breakfast cereal"}]'
+    code, env = run(db_path, "batch", "--dry-run", stdin=ops)
+    assert code == 0 and env["ok"]
+    _, env = run(db_path, "get", "Granola")
+    assert "breakfast cereal" not in env["result"]["aliases"]
+
+    code, env = run(db_path, "batch", stdin=ops)
+    assert code == 0 and env["ok"]
+    _, env = run(db_path, "get", "breakfast cereal")
+    assert env["result"]["item"] == "Granola"
 
 
 def test_rename_conflict(db_path):
