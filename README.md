@@ -33,6 +33,7 @@ app/           settings, db, schema.sql, queries, mutations, exporters, cli, mai
 scripts/       init_db, import_from_notion, backup_db, export_csv, install_launchd, uninstall_launchd
 tests/         low-stock logic, queries, mutations, exporters, CLI, routes
 deploy/        launchd plists + notes
+skills/        how agents operate the inventory (common commands in SKILL.md, the rest in reference.md)
 ```
 
 ## v1 scope

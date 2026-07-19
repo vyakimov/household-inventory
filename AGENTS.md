@@ -37,6 +37,7 @@ app/
 scripts/         init_db, import_from_notion, backup_db, export_csv, install/uninstall_launchd
 tests/           low-stock logic, queries, mutations, exporters, CLI, routes
 deploy/          launchd plists + notes
+skills/          agent-facing usage skill (SKILL.md + reference.md; symlinked into .claude/skills)
 inventory.sh     standalone CLI wrapper (the safe-to-whitelist remote entry point)
 ```
 
