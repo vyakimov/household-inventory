@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent  # .../inventory-web
 
 # Shared dev .env one level up holds NOTION_TOKEN; project-local .env can override.
 load_dotenv(BASE_DIR.parent / ".env")
-load_dotenv(BASE_DIR / ".env", override=True)
+load_dotenv(os.environ.get("INVENTORY_ENV", BASE_DIR / ".env"), override=True)
 
 DB_PATH = Path(os.environ.get("INVENTORY_DB", str(BASE_DIR / "inventory.db")))
 

@@ -22,9 +22,9 @@ while [ -h "$SOURCE" ]; do
 done
 DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 
-INV="$DIR/.venv/bin/inv"
+INV="$DIR/.deploy/repo/.venv/bin/inv"
 if [ ! -x "$INV" ]; then
-    echo '{"ok": false, "action": "wrapper", "error": {"type": "internal_error", "message": "inventory venv not found; run `uv sync` in the project directory"}}'
+    echo '{"ok": false, "action": "wrapper", "error": {"type": "internal_error", "message": "deployed inventory venv not found; run scripts/install_launchd.sh"}}'
     exit 1
 fi
 
@@ -39,5 +39,6 @@ for arg in "$@"; do
     esac
 done
 export INVENTORY_DB="$DIR/inventory.db"
+export INVENTORY_ENV="$DIR/.env"
 
 exec "$INV" "$@"

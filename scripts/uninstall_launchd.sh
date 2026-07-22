@@ -3,7 +3,7 @@
 set -eu
 
 AGENTS="$HOME/Library/LaunchAgents"
-LABELS="com.vy.inventory com.vy.inventory-backup"
+LABELS="com.vy.inventory com.vy.inventory-backup com.vy.inventory-deploy"
 
 for label in $LABELS; do
     dst="$AGENTS/$label.plist"

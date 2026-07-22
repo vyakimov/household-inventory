@@ -1,16 +1,37 @@
 # Deploying on macOS (launchd)
 
 Runs Uvicorn bound to the LAN on port 8502, kept alive by launchd, plus a daily
-backup job. No auth — reachable only on the LAN / over WireGuard (v1). The plists
-call the venv binaries directly (`.venv/bin/uvicorn`, `.venv/bin/python`), so the
-service doesn't depend on `uv` at runtime — but `uv sync` must have created `.venv`.
+backup and deployment jobs. No auth — reachable only on the LAN / over WireGuard
+(v1). The service plists call binaries in the isolated deployment venv directly,
+while the deploy watcher uses `uv` only while the web service is stopped.
+
+## Continuous deployment
+
+GitHub Actions runs Ruff and the full pytest suite on every pull request and every
+push to `main`. A local LaunchAgent checks GitHub every five minutes and deploys only
+the newest `main` commit whose `CI` workflow succeeded. The pull model is deliberate:
+this repository is public, so the Mac is not exposed as a general-purpose GitHub
+self-hosted runner.
+
+Production code lives in the isolated `.deploy/repo` checkout. The database, `.env`,
+backups, and logs remain in the project root. A deployment:
+
+1. verifies the checkout is marked, clean, and can fast-forward to the tested SHA;
+2. checks out that exact commit;
+3. stops the web LaunchAgent and runs `uv sync --frozen`;
+4. installs the versioned plist, starts the service, and retries an HTTP health check;
+5. restores the previous commit, dependencies, and plist if any step fails.
+
+A failed SHA is recorded in `.deploy/failed-sha` so a bad release cannot cause a
+restart loop. A later successful commit is eligible normally. Deployment output is
+written to `logs/deploy.out.log` and errors to `logs/deploy.err.log`.
 
 ## Install / remove
 
 ```bash
-uv sync                          # ensure .venv exists
-scripts/install_launchd.sh       # copy plists, create logs/, load both agents
-scripts/uninstall_launchd.sh     # unload + remove both agents
+uv sync                          # development venv
+scripts/install_launchd.sh       # initialize deploy checkout and load all agents
+scripts/uninstall_launchd.sh     # unload + remove all agents
 ```
 
 Then browse to `http://<this-mac>.local:8502/` from any device on the LAN.
@@ -20,13 +41,14 @@ Manage / inspect:
 ```bash
 launchctl list | grep vy.inventory     # status
 tail -f logs/inventory.err.log         # logs
+tail -f logs/deploy.out.log            # CD decisions and deployed SHAs
 ```
 
 ## Remote CLI via the `inventory.sh` wrapper
 
-`inventory.sh` (project root) execs `.venv/bin/inv` directly — **no `uv`, no
-arbitrary Python**. Whitelist *this script* for remote/agent execution instead of
-`uv`, so the grant covers only inventory commands:
+`inventory.sh` (project root) execs the deployed `.deploy/repo/.venv/bin/inv`
+directly — **no `uv`, no arbitrary Python**. Whitelist *this script* for
+remote/agent execution instead of `uv`, so the grant covers only inventory commands:
 
 ```bash
 ./inventory.sh take "Coffee" 1 --source agent
@@ -61,8 +83,9 @@ launchctl print gui/$(id -u)/com.vy.inventory # detailed state, last exit reason
   benched the job. Reset with:
   `launchctl bootout gui/$(id -u)/<label>` then
   `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/<label>.plist`.
-- **Every request 500s after `uv sync`**: rebuilding `.venv` pulls site-packages out
-  from under the running process. Restart it:
+- **Every request 500s after a manual deploy-venv `uv sync`**: rebuilding `.venv` pulls site-packages out
+  from under the running process. CD avoids this by stopping the service before sync.
+  If this is ever done manually inside `.deploy/repo`, restart it:
   `launchctl kickstart -k gui/$(id -u)/com.vy.inventory`.
 
 ## Notes

@@ -8,12 +8,20 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/vy/Documents/Development/inventory-web/.venv/bin/python</string>
+        <string>/Users/vy/Documents/Development/inventory-web/.deploy/repo/.venv/bin/python</string>
         <string>scripts/backup_db.py</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/vy/Documents/Development/inventory-web</string>
+    <string>/Users/vy/Documents/Development/inventory-web/.deploy/repo</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>INVENTORY_DB</key>
+        <string>/Users/vy/Documents/Development/inventory-web/inventory.db</string>
+        <key>INVENTORY_ENV</key>
+        <string>/Users/vy/Documents/Development/inventory-web/.env</string>
+    </dict>
 
     <key>StartCalendarInterval</key>
     <dict>
