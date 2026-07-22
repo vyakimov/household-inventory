@@ -7,7 +7,7 @@ KEEP = 30
 
 
 def main() -> None:
-    backups = settings.BASE_DIR / "backups"
+    backups = settings.DB_PATH.parent / "backups"
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     dest = backups / f"inventory-{ts}.db"
     exporters.backup_to(dest)

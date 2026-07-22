@@ -36,6 +36,7 @@ def _inventory_ctx(request, conn, tab, q):
         "request": request,
         "tab": tab,
         "q": q or "",
+        "items": items,
         "groups": queries.group_by_category(items),
         "low_count": queries.count_low(conn),
         "buy_count": queries.count_needs_buy(conn),
@@ -46,13 +47,16 @@ def _inventory_ctx(request, conn, tab, q):
 
 
 def _search_items(conn, tab: str, q: str | None) -> tuple[list[dict], bool]:
-    """Use semantic matches only after the normal name/alias search misses."""
+    """Return ranked lexical matches followed by deduplicated semantic matches."""
     items = queries.list_items(conn, tab, q)
-    if items or not q or not embeddings.enabled():
+    if not q:
         return items, False
-    matches = embeddings.semantic_search(conn, q)
+    items = [{**item, "_search_source": "lexical"} for item in items]
+    if not embeddings.enabled():
+        return items, False
+    matches = embeddings.semantic_search(conn, q, top_k=8 + len(items))
     if not matches:
-        return [], False
+        return items, False
     ids = [match["id"] for match in matches]
     placeholders = ", ".join("?" for _ in ids)
     rows = {
@@ -66,8 +70,13 @@ def _search_items(conn, tab: str, q: str | None) -> tuple[list[dict], bool]:
             or (tab == "necessities" and item["necessity"])
             or (tab == "needs-buy" and item["needs_buy"])
         )
-    items = [rows[item_id] for item_id in ids if item_id in rows and in_tab(rows[item_id])]
-    return items, bool(items)
+    seen = {item["id"] for item in items}
+    semantic_items = [
+        {**rows[item_id], "_search_source": "semantic"}
+        for item_id in ids
+        if item_id not in seen and item_id in rows and in_tab(rows[item_id])
+    ]
+    return items + semantic_items, bool(semantic_items)
 
 
 def _get_or_404(conn, item_id: int) -> dict:
@@ -105,6 +114,7 @@ def partial_list(request: Request, tab: str = "all", q: str | None = None, conn=
     items, semantic = _search_items(conn, tab, q)
     return templates.TemplateResponse(request, "partials/item_list.html",
                                       {"request": request, "q": q or "", "semantic": semantic,
+                                       "items": items,
                                        "groups": queries.group_by_category(items)})
 
 

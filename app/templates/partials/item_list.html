@@ -1,6 +1,17 @@
-{% if semantic %}
-<p class="mb-3 ml-1 text-xs font-medium text-amber">Closest matches for “{{ q }}”</p>
-{% endif %}
+{% if q %}
+<div class="space-y-2.5">
+  {% for i in items %}
+    {% if i._search_source == 'semantic' and (loop.first or loop.previtem._search_source != 'semantic') %}
+    <p class="mb-3 ml-1 pt-3 text-xs font-medium text-amber">Closest matches for “{{ q }}”</p>
+    {% endif %}
+    {% include "partials/item_card.html" %}
+  {% else %}
+  <div class="rounded-2xl border border-dashed border-line py-12 text-center text-muted">
+    Nothing to show here.
+  </div>
+  {% endfor %}
+</div>
+{% else %}
 {% for category, items in groups %}
 <section class="mb-6">
   <h2 class="mb-2 ml-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted">{{ category }}</h2>
@@ -13,3 +24,4 @@
   Nothing to show here.
 </div>
 {% endfor %}
+{% endif %}

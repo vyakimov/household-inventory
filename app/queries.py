@@ -15,9 +15,52 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
 
-def _like(term: str) -> str:
-    """Escape LIKE wildcards so user input matches literally (pair with ESCAPE '\\')."""
-    return re.sub(r"([\\%_])", r"\\\1", term)
+def _stem(token: str) -> str:
+    """Return a small, conservative English stem suitable for inventory labels."""
+    if len(token) > 4 and token.endswith("ies"):
+        return token[:-3] + "y"
+    if len(token) > 5 and token.endswith("ing"):
+        base = token[:-3]
+        return base[:-1] if len(base) > 2 and base[-1] == base[-2] else base
+    if len(token) > 4 and token.endswith("ed"):
+        base = token[:-2]
+        return base[:-1] if len(base) > 2 and base[-1] == base[-2] else base
+    if len(token) > 4 and token.endswith("es") and token[-3] in "sxz":
+        return token[:-2]
+    if len(token) > 3 and token.endswith("s") and not token.endswith(("ss", "us", "is")):
+        return token[:-1]
+    return token
+
+
+def _lexical_score(query: str, label: str) -> float | None:
+    """Score exact, substring, stemmed-token, and fuzzy label matches."""
+    query_norm = _norm(query)
+    label_norm = _norm(label)
+    if not query_norm or not label_norm:
+        return None
+    if query_norm == label_norm:
+        return 1.0
+    if query_norm in label_norm:
+        return 0.95 + 0.04 * len(query_norm) / len(label_norm)
+
+    query_tokens = query_norm.split()
+    label_tokens = label_norm.split()
+    token_scores = []
+    for query_token in query_tokens:
+        best = 0.0
+        for label_token in label_tokens:
+            if query_token == label_token:
+                best = 1.0
+            elif _stem(query_token) == _stem(label_token):
+                best = max(best, 0.96)
+            else:
+                best = max(best, difflib.SequenceMatcher(None, query_token, label_token).ratio())
+        token_scores.append(best)
+    if token_scores and min(token_scores) >= 0.74:
+        return 0.8 + 0.15 * sum(token_scores) / len(token_scores)
+
+    similarity = difflib.SequenceMatcher(None, query_norm, label_norm).ratio()
+    return 0.75 * similarity if similarity >= 0.76 else None
 
 
 def categories(conn: sqlite3.Connection) -> list[str]:
@@ -37,20 +80,34 @@ def get_item(conn: sqlite3.Connection, item_id: int) -> dict | None:
 def list_items(conn: sqlite3.Connection, tab: str = "all", q: str | None = None) -> list[dict]:
     sql = ["SELECT v.* FROM v_items v JOIN categories c ON c.name = v.category"]
     where: list[str] = []
-    params: list = []
     if tab == "low":
         where.append("v.is_low = 1")
     elif tab == "necessities":
         where.append("v.necessity = 1")
     elif tab == "needs-buy":
         where.append("v.needs_buy = 1")
-    if q:
-        where.append("(v.item LIKE ? ESCAPE '\\' OR v.aliases LIKE ? ESCAPE '\\')")
-        params += [f"%{_like(q)}%", f"%{_like(q)}%"]
     if where:
         sql.append("WHERE " + " AND ".join(where))
     sql.append("ORDER BY c.sort_order, v.item COLLATE NOCASE")
-    return [dict(r) for r in conn.execute(" ".join(sql), params)]
+    rows = [dict(r) for r in conn.execute(" ".join(sql))]
+    if not q:
+        return rows
+
+    ranked = []
+    for position, row in enumerate(rows):
+        candidates = [
+            (0, _lexical_score(q, row["item"])),
+        ]
+        candidates.extend(
+            (1, _lexical_score(q, alias)) for alias in split_aliases(row["aliases"])
+        )
+        candidates.append((2, _lexical_score(q, row["category"])))
+        matches = [(tier, score) for tier, score in candidates if score is not None]
+        if matches:
+            tier, score = min(matches, key=lambda match: (match[0], -match[1]))
+            ranked.append((tier, -score, position, row))
+    ranked.sort(key=lambda match: match[:3])
+    return [row for *_, row in ranked]
 
 
 def group_by_category(items: list[dict]) -> list[tuple[str, list[dict]]]:

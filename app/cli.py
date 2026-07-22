@@ -240,7 +240,7 @@ def cmd_search(conn, args):
         seen.add(row["id"])
         items.append(_search_row(row, "like", None))
     if len(items) < args.limit:
-        for match in embeddings.semantic_search(conn, query, top_k=args.limit):
+        for match in embeddings.semantic_search(conn, query, top_k=args.limit + len(seen)):
             if match["id"] in seen:
                 continue
             row = queries.get_item(conn, match["id"])

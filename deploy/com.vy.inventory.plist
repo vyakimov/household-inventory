@@ -8,7 +8,7 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/vy/Documents/Development/inventory-web/.venv/bin/uvicorn</string>
+        <string>/Users/vy/Documents/Development/inventory-web/.deploy/repo/.venv/bin/uvicorn</string>
         <string>app.main:app</string>
         <string>--host</string>
         <string>0.0.0.0</string>
@@ -17,7 +17,15 @@
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/vy/Documents/Development/inventory-web</string>
+    <string>/Users/vy/Documents/Development/inventory-web/.deploy/repo</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>INVENTORY_DB</key>
+        <string>/Users/vy/Documents/Development/inventory-web/inventory.db</string>
+        <key>INVENTORY_ENV</key>
+        <string>/Users/vy/Documents/Development/inventory-web/.env</string>
+    </dict>
 
     <key>RunAtLoad</key>
     <true/>

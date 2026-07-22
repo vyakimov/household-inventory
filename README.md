@@ -21,8 +21,8 @@ uv run ruff check .                        # lint
 ./inventory.sh list-actions                # agent CLI via the standalone wrapper
 ```
 
-`inventory.sh` execs the venv's `inv` console script directly (no `uv`, no arbitrary
-Python) — whitelist it for remote/agent use. For always-on macOS deployment and the
+`inventory.sh` execs the deployed venv's `inv` console script directly (no `uv`, no
+arbitrary Python) — whitelist it for remote/agent use. For always-on macOS deployment and the
 launchd install/remove scripts see [deploy/README.md](deploy/README.md).
 
 ## Project layout
@@ -32,7 +32,7 @@ inventory.sh   standalone CLI wrapper (safe to whitelist remotely)
 app/           settings, db, schema.sql, queries, mutations, exporters, cli, main, templates/, static/
 scripts/       init_db, import_from_notion, backup_db, export_csv, install_launchd, uninstall_launchd
 tests/         low-stock logic, queries, mutations, exporters, CLI, routes
-deploy/        launchd plists + notes
+deploy/        launchd plists + CI-gated continuous-deployment notes
 skills/        how agents operate the inventory (common commands in SKILL.md, the rest in reference.md)
 ```
 
