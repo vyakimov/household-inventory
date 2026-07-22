@@ -1,6 +1,3 @@
-import pytest
-
-
 def _id(conn, name):
     return conn.execute("SELECT id FROM items WHERE item = ?", (name,)).fetchone()["id"]
 
@@ -48,13 +45,24 @@ def test_search_semantic_fallback(client, conn, monkeypatch):
     assert "Bathroom bleach" in r.text and "Closest matches" in r.text
 
 
-def test_search_like_hit_skips_semantic_provider(client, monkeypatch):
+def test_search_puts_semantic_matches_after_lexical_hits(client, conn, monkeypatch):
     from app import embeddings
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    monkeypatch.setattr(embeddings, "_request_embeddings", lambda texts: pytest.fail("called"))
+    bathroom_id = conn.execute(
+        "INSERT INTO items(item, category, unit) VALUES ('Bathroom bleach', 'cleaning', 'units')"
+    ).lastrowid
+    monkeypatch.setattr(
+        embeddings,
+        "semantic_search",
+        lambda conn, query, top_k=8: [
+            {"id": bathroom_id, "item": "Bathroom bleach", "score": 0.9}
+        ],
+    )
     r = client.get("/partials/list", params={"tab": "all", "q": "Granola"})
-    assert "Granola" in r.text and "Closest matches" not in r.text
+    assert r.text.index("Granola") < r.text.index("Closest matches") < r.text.index(
+        "Bathroom bleach"
+    )
 
 
 def test_search_disabled_keeps_empty_result_page(client):

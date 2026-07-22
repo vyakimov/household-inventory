@@ -55,7 +55,7 @@ def test_search_merges_like_and_semantic_results(db_path, monkeypatch):
     monkeypatch.setattr(embeddings, "_request_embeddings", fake)
     code, env = run(db_path, "search", "Granola", "--limit", "8")
     assert code == 0 and env["result"]["items"][0]["source"] == "like"
-    code, env = run(db_path, "search", "--query", "bathroom cleaner")
+    code, env = run(db_path, "search", "--query", "washroom cleaner")
     assert code == 0 and env["result"]["items"][0] == {
         "id": 7, "item": "Bathroom bleach", "category": "cleaning", "quantity": 0.0,
         "unit": "units", "source": "semantic", "score": 1.0,
