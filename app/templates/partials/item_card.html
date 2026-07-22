@@ -1,5 +1,5 @@
-{% set tracked = i.necessity and i.low_stock_threshold %}
-{% set fill = [[((i.quantity / i.low_stock_threshold * 100) if i.low_stock_threshold else 100), 100]|min, 8]|max %}
+{% set tracked = i.necessity and i.low_stock_threshold >= 0 %}
+{% set fill = [[((i.quantity / i.low_stock_threshold * 100) if i.low_stock_threshold > 0 else (8 if i.quantity == 0 else 100)), 100]|min, 8]|max %}
 <article id="item-{{ i.id }}"
          class="fade-in relative overflow-hidden rounded-2xl border border-line bg-surface py-3.5 pl-5 pr-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
   <!-- stock gauge: fills with quantity relative to the reorder threshold -->

@@ -20,7 +20,7 @@ FIXTURE_ITEMS = [
     ("Toilet paper", "paper goods", 4, "rolls", 2, 1, 0, "loo roll; bog roll"),  # not low
     ("Black beans", "food", 2, "cans", 0, 0, 0, ""),            # not a necessity
     ("Granola", "food", 1, "units", 1, 1, 0, ""),               # low (inclusive)
-    ("Salt", "food", 0, "units", 0, 1, 0, ""),                  # necessity but threshold 0
+    ("Salt", "food", 0, "units", -1, 1, 0, ""),                 # necessity, restock disabled
 ]
 
 

@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS items (
     quantity             REAL NOT NULL DEFAULT 0 CHECK (quantity >= 0),
     unit                 TEXT NOT NULL DEFAULT 'units' REFERENCES units(name),
     step                 REAL NOT NULL DEFAULT 1 CHECK (step > 0),
-    low_stock_threshold  REAL NOT NULL DEFAULT 0 CHECK (low_stock_threshold >= 0),
+    low_stock_threshold  REAL NOT NULL DEFAULT -1
+                         CHECK (low_stock_threshold = -1 OR low_stock_threshold >= 0),
     necessity            INTEGER NOT NULL DEFAULT 0 CHECK (necessity IN (0, 1)),
     on_the_way           INTEGER NOT NULL DEFAULT 0 CHECK (on_the_way IN (0, 1)),
     shopping_item_name   TEXT NOT NULL DEFAULT '',
@@ -40,12 +41,14 @@ CREATE TABLE IF NOT EXISTS item_embeddings (
 );
 
 -- Computed flags over every row; the filter tabs are WHERE clauses on this view.
-CREATE VIEW IF NOT EXISTS v_items AS
+-- A threshold of -1 disables restocking; 0 means restock when empty.
+DROP VIEW IF EXISTS v_items;
+CREATE VIEW v_items AS
 SELECT
     i.*,
-    CAST(i.necessity = 1 AND i.low_stock_threshold > 0
+    CAST(i.necessity = 1 AND i.low_stock_threshold >= 0
          AND i.quantity <= i.low_stock_threshold AS INTEGER) AS is_low,
-    CAST(i.necessity = 1 AND i.low_stock_threshold > 0
+    CAST(i.necessity = 1 AND i.low_stock_threshold >= 0
          AND i.quantity <= i.low_stock_threshold
          AND i.on_the_way = 0 AS INTEGER) AS needs_buy
 FROM items i;

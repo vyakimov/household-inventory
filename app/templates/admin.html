@@ -19,8 +19,9 @@
   </select>
   <input name="quantity" type="number" step="any" min="0" value="0" placeholder="qty"
          class="rounded-lg border border-line bg-paper px-3 py-2 focus:border-basil focus:outline-none">
-  <input name="low_stock_threshold" type="number" step="any" min="0" value="0" placeholder="reorder at"
+  <input name="low_stock_threshold" type="number" step="any" min="-1" value="-1" placeholder="reorder at"
          class="rounded-lg border border-line bg-paper px-3 py-2 focus:border-basil focus:outline-none">
+  <p class="col-span-2 text-xs text-muted">Reorder at: -1 never, 0 when empty, or a positive threshold.</p>
   <label class="col-span-2 flex items-center gap-2 text-sm text-muted">
     <input type="checkbox" name="necessity" value="1" class="accent-basil"> Necessity
   </label>

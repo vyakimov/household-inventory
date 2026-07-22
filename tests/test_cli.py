@@ -191,6 +191,16 @@ def test_needs_buy_tab(db_path):
     assert all(item["needs_buy"] for item in env["result"]["items"])
 
 
+def test_new_threshold_defaults_to_disabled_and_rejects_other_negatives(db_path):
+    code, env = run(db_path, "new", "Oats", "--category", "food", "--necessity")
+    assert code == 0 and env["result"]["low_stock_threshold"] == -1
+
+    code, env = run(
+        db_path, "edit", "Oats", "--threshold", "-0.5"
+    )
+    assert code == 4 and env["error"]["type"] == "invalid_arguments"
+
+
 def test_lookups(db_path):
     code, env = run(db_path, "lookups")
     assert code == 0 and env["ok"]

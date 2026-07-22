@@ -16,7 +16,7 @@
         </select>
       </label>
       <label class="text-xs text-muted">Quantity<input name="quantity" type="number" step="any" min="0" value="{{ i.quantity|num }}" class="{{ field }}"></label>
-      <label class="text-xs text-muted">Reorder at<input name="low_stock_threshold" type="number" step="any" min="0" value="{{ i.low_stock_threshold|num }}" class="{{ field }}"></label>
+      <label class="text-xs text-muted">Reorder at (-1 never)<input name="low_stock_threshold" type="number" step="any" min="-1" value="{{ i.low_stock_threshold|num }}" class="{{ field }}"></label>
       <label class="text-xs text-muted">Step<input name="step" type="number" step="any" min="0" value="{{ i.step|num }}" class="{{ field }}"></label>
       <label class="text-xs text-muted">Shopping name<input name="shopping_item_name" value="{{ i.shopping_item_name }}" class="{{ field }}"></label>
       <label class="col-span-2 text-xs text-muted sm:col-span-4">Notes<input name="notes" value="{{ i.notes }}" class="{{ field }}"></label>

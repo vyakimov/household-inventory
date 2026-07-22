@@ -88,13 +88,15 @@ def parse_row(page: dict) -> dict | None:
     item = _title(p, "Item")
     if not item:
         return None
+    threshold = _number(p, "Low stock threshold")
     return {
         "item": item,
         "aliases": _text(p, "Aliases"),
         "category": _select(p, "Category"),
         "quantity": _number(p, "Quantity") or 0,
         "unit": _select(p, "Unit"),
-        "low_stock_threshold": _number(p, "Low stock threshold") or 0,
+        # Notion's legacy formula treated zero as disabled, so preserve that meaning.
+        "low_stock_threshold": -1 if threshold in (None, 0) else threshold,
         "necessity": 1 if _checkbox(p, "Necessity") else 0,
         "on_the_way": 1 if _checkbox(p, "On the way") else 0,
         "shopping_item_name": _text(p, "Shopping item name"),

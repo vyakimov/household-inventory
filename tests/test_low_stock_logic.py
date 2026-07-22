@@ -19,8 +19,14 @@ def test_non_necessity_excluded(conn):
     assert _flags(conn)["Black beans"]["is_low"] == 0
 
 
-def test_zero_threshold_excluded(conn):
+def test_disabled_threshold_excluded(conn):
     assert _flags(conn)["Salt"]["is_low"] == 0
+
+
+def test_zero_threshold_is_low_when_empty(conn):
+    conn.execute("UPDATE items SET low_stock_threshold = 0 WHERE item = 'Salt'")
+    f = _flags(conn)["Salt"]
+    assert f["is_low"] == 1 and f["needs_buy"] == 1
 
 
 def test_above_threshold_not_low(conn):

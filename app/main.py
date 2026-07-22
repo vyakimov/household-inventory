@@ -255,7 +255,7 @@ def admin_save(request: Request, item_id: int, conn=Depends(get_conn),
 @app.post("/items", response_class=HTMLResponse)
 def admin_create(request: Request, conn=Depends(get_conn),
                  item: str = Form(...), category: str = Form(...), unit: str = Form("units"),
-                 quantity: float = Form(0), low_stock_threshold: float = Form(0),
+                 quantity: float = Form(0), low_stock_threshold: float = Form(-1),
                  necessity: int = Form(0)):
     try:
         with db.transaction(conn):

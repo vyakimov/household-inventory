@@ -59,7 +59,7 @@ can override the OpenRouter-compatible endpoint.
 
 ## Data model
 
-- `items` — canonical item, aliases, category (FK), quantity (REAL, ≥0), unit (FK), `step`, `low_stock_threshold`, `necessity`, `on_the_way`, `shopping_item_name`, `notes`, timestamps.
+- `items` — canonical item, aliases, category (FK), quantity (REAL, ≥0), unit (FK), `step`, `low_stock_threshold` (`-1` never, `0` when empty, positive at/below threshold), `necessity`, `on_the_way`, `shopping_item_name`, `notes`, timestamps.
 - `categories` / `units` — FK-enforced lookup tables. Categories use a household-oriented taxonomy and can be managed through `inv category`; units are seeded from the live Notion enums (packs, cans, cartons, kg, jars, bottles, blocks, boxes, rolls, bags, tubes, containers, buckets, pouches, units, mixed, unclear, other, g).
 - `v_items` — view over all rows computing `is_low` and `needs_buy`; the filter tabs are `WHERE` clauses on it.
 - `events` — append-only audit log written by both web and CLI mutations (op, delta, before/after, source, note, timestamp, nullable unique `request_id` for CLI idempotency).

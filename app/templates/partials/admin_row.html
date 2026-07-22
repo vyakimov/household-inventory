@@ -6,7 +6,7 @@
   <td class="p-2.5 text-muted">{{ i.category }}</td>
   <td class="p-2.5 tabular-nums">{{ i.quantity|num }}</td>
   <td class="p-2.5 text-muted">{{ i.unit }}</td>
-  <td class="p-2.5 tabular-nums">{{ i.low_stock_threshold|num }}</td>
+  <td class="p-2.5 tabular-nums">{{ 'Never' if i.low_stock_threshold == -1 else i.low_stock_threshold|num }}</td>
   <td class="p-2.5 text-center {{ 'text-basil' if i.necessity else 'text-line' }}">{{ '●' if i.necessity else '–' }}</td>
   <td class="whitespace-nowrap p-2.5 text-right">
     <button hx-get="/partials/admin-row/{{ i.id }}/edit" hx-target="#admin-{{ i.id }}" hx-swap="outerHTML"

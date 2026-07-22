@@ -60,6 +60,11 @@ def _validate_unit(conn, name):
         raise ValidationError(f"unknown unit '{name}'")
 
 
+def _validate_threshold(value: float) -> None:
+    if value < 0 and value != -1:
+        raise ValidationError("low stock threshold must be -1 or >= 0")
+
+
 def add_category(conn, name, sort_order=None, *, source="cli") -> dict:
     """Register a category lookup value, returning the existing row if present."""
     name = (name or "").strip()
@@ -236,6 +241,8 @@ def update_item(conn, item_id, fields: dict, *, source="cli") -> dict:
         raise ValidationError("quantity must be >= 0")
     if "step" in updates and updates["step"] <= 0:
         raise ValidationError("step must be > 0")
+    if "low_stock_threshold" in updates:
+        _validate_threshold(updates["low_stock_threshold"])
     for b in ("necessity", "on_the_way"):
         if b in updates:
             updates[b] = 1 if updates[b] else 0
@@ -270,12 +277,16 @@ def create_item(conn, fields: dict, *, source="cli") -> dict:
         "quantity": float(fields.get("quantity", 0) or 0),
         "unit": unit,
         "step": float(fields.get("step", 1) or 1),
-        "low_stock_threshold": float(fields.get("low_stock_threshold", 0) or 0),
+        "low_stock_threshold": float(
+            fields.get("low_stock_threshold", -1)
+            if fields.get("low_stock_threshold") is not None else -1
+        ),
         "necessity": 1 if fields.get("necessity") else 0,
         "on_the_way": 1 if fields.get("on_the_way") else 0,
         "shopping_item_name": fields.get("shopping_item_name", ""),
         "notes": fields.get("notes", ""),
     }
+    _validate_threshold(row["low_stock_threshold"])
     cur = conn.execute(
         "INSERT INTO items (item, aliases, category, quantity, unit, step,"
         " low_stock_threshold, necessity, on_the_way, shopping_item_name, notes)"

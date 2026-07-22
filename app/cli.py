@@ -558,7 +558,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--unit", default="units")
     sp.add_argument("--qty", type=float, default=0)
     sp.add_argument("--step", type=float, default=1)
-    sp.add_argument("--threshold", type=float, default=0)
+    sp.add_argument("--threshold", type=float, default=-1)
     sp.add_argument("--necessity", action="store_true")
     sp.add_argument("--alias")
     sp.add_argument("--shopping-name", dest="shopping_name")

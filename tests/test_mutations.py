@@ -49,6 +49,22 @@ def test_update_bad_category_raises(conn):
         mutations.update_item(conn, _id(conn, "Granola"), {"category": "nope"})
 
 
+@pytest.mark.parametrize("threshold", [-0.1, -2])
+def test_update_rejects_ambiguous_negative_threshold(conn, threshold):
+    with pytest.raises(mutations.ValidationError, match="must be -1 or >= 0"):
+        mutations.update_item(
+            conn, _id(conn, "Granola"), {"low_stock_threshold": threshold}
+        )
+
+
+def test_update_accepts_disabled_threshold(conn):
+    with db.transaction(conn):
+        item = mutations.update_item(
+            conn, _id(conn, "Granola"), {"low_stock_threshold": -1}
+        )
+    assert item["low_stock_threshold"] == -1 and item["is_low"] == 0
+
+
 def test_add_alias_dedupe_case_insensitive(conn):
     i = _id(conn, "Wet cat food")
     with db.transaction(conn):
